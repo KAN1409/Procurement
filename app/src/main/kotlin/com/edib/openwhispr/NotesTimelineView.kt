@@ -38,6 +38,8 @@ class NotesTimelineView(
     private val searchBarLayout: LinearLayout
     private val searchEditText: EditText
     private val emptyView: TextView
+    private val filterRow: LinearLayout
+    private val countLabel: TextView
     private val recordBar: LinearLayout
     private val recordFab: MaterialButton
 
@@ -68,31 +70,27 @@ class NotesTimelineView(
 
         container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(OpenWisprUi.SPACE_LG), dp(OpenWisprUi.SPACE_MD), dp(OpenWisprUi.SPACE_LG), 0)
+            setPadding(dp(OpenWisprUi.GUTTER), dp(OpenWisprUi.SPACE_MD),
+                        dp(OpenWisprUi.GUTTER), 0)
         }
 
-        // ================= TOP BAR: title + Search + Settings =================
-        // The system bar already shows the app name, and the screen below is
-        // the notes list, so the app name is not repeated in content space.
+        // ================= TITLE ROW =================
+        // The app name is shown once, large and quiet. No decorative subtitle.
         val topBar = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = dp(OpenWisprUi.SPACE_SM)
-            }
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(OpenWisprUi.SPACE_MD) }
             layoutParams = lp
         }
 
-        val brandTitle = TextView(context).apply {
-            text = "Notes"
-            textSize = 24f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(OpenWisprUi.primaryText(context))
+        val brandTitle = OpenWisprUi.screenTitle(context, "OpenWhispr").apply {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         topBar.addView(brandTitle)
 
-        val searchBtn = OpenWisprUi.iconImageButton(context, R.drawable.ic_search, "Search notes") {
+        val searchBtn = OpenWisprUi.iconImageButton(context, R.drawable.ic_search, "Search transcripts") {
             toggleSearch()
         }
         topBar.addView(searchBtn)
@@ -104,27 +102,35 @@ class NotesTimelineView(
 
         container.addView(topBar)
 
-        // ================= SEARCH BAR (Expandable) =================
+        // ================= SEARCH (always visible, flat graphite) =================
         searchBarLayout = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(8), dp(14), dp(8))
-            background = OpenWisprUi.surface(context)
-            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = dp(16)
-            }
+            setPadding(dp(OpenWisprUi.SPACE_MD), 0, dp(OpenWisprUi.SPACE_SM), 0)
+            background = OpenWisprUi.outlinedSurface(context, OpenWisprUi.RADIUS_CONTROL)
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(44)
+            ).apply { bottomMargin = dp(OpenWisprUi.SPACE_MD) }
             layoutParams = lp
-            visibility = View.GONE
         }
 
+        val searchIcon = android.widget.ImageView(context).apply {
+            setImageResource(R.drawable.ic_search)
+            setColorFilter(OpenWisprUi.textMuted(context))
+            val s = dp(10)
+            setPadding(s, s, s, s)
+        }
+        searchBarLayout.addView(searchIcon)
+
         searchEditText = EditText(context).apply {
-            hint = "Search notes…"
-            setHintTextColor(OpenWisprUi.mutedText(context))
-            setTextColor(OpenWisprUi.primaryText(context))
-            textSize = 15f
+            hint = "Search transcripts"
+            setHintTextColor(OpenWisprUi.textMuted(context))
+            setTextColor(OpenWisprUi.text(context))
+            textSize = OpenWisprUi.BODY_SP
             background = null
+            setSingleLine(true)
             OpenWisprUi.applyTranscriptDirection(this)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
@@ -136,34 +142,51 @@ class NotesTimelineView(
         }
         searchBarLayout.addView(searchEditText)
 
-        val clearSearchBtn = TextView(context).apply {
-            text = "×"
-            contentDescription = "Close search"
-            textSize = 14f
-            setTextColor(0xFF888888.toInt())
-            gravity = Gravity.CENTER
-            minWidth = dp(48)
-            minHeight = dp(48)
-            isClickable = true
-            isFocusable = true
-            setOnClickListener {
-                searchEditText.setText("")
-                toggleSearch()
-            }
+        val clearSearchBtn = android.widget.ImageButton(context).apply {
+            setImageResource(R.drawable.ic_search_off)
+            setColorFilter(OpenWisprUi.textMuted(context))
+            contentDescription = "Clear search"
+            background = OpenWisprUi.rounded(0x00000000, dp(10))
+            val s = dp(11)
+            setPadding(s, s, s, s)
+            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
+            setOnClickListener { searchEditText.setText("") }
         }
         searchBarLayout.addView(clearSearchBtn)
         container.addView(searchBarLayout)
 
+        // ================= SUMMARY ROW =================
+        // A quiet count of what is stored. Note has no persisted origin flag, so
+        // Recorded/Imported filters would show identical results and are not
+        // offered; adding one would be a schema change, not a visual one.
+        filterRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(OpenWisprUi.SPACE_MD) }
+            layoutParams = lp
+        }
+        container.addView(filterRow)
+
+        countLabel = TextView(context).apply {
+            textSize = OpenWisprUi.LABEL_SP
+            letterSpacing = 0.06f
+            setTextColor(OpenWisprUi.textMuted(context))
+        }
+        filterRow.addView(countLabel)
+        filterRow.addView(View(context).apply {
+            layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
+        })
+
         emptyView = TextView(context).apply {
-            text = "No voice notes yet\n\nRecord your first note and it will be transcribed here."
-            textSize = 16f
-            setTextColor(OpenWisprUi.secondaryText(context))
+            text = "No voice notes yet\n\nRecord or import your first voice note."
+            textSize = OpenWisprUi.BODY_SP
+            setTextColor(OpenWisprUi.textMuted(context))
             gravity = Gravity.CENTER
-            setLineSpacing(0f, 1.3f)
-            // Centred in the available space, not pinned under the list. A
-            // weighted child with a small top padding sits high in the column;
-            // this offset moves the message into the visual middle.
-            setPadding(dp(OpenWisprUi.SPACE_XL), dp(48), dp(OpenWisprUi.SPACE_XL), dp(48))
+            setLineSpacing(0f, 1.35f)
+            setPadding(dp(OpenWisprUi.SPACE_XL), dp(OpenWisprUi.SPACE_2XL),
+                        dp(OpenWisprUi.SPACE_XL), dp(OpenWisprUi.SPACE_XL))
             visibility = View.GONE
         }
 
@@ -172,7 +195,7 @@ class NotesTimelineView(
         // vertical column: fixed header, then a weighted scrolling list.
         val column = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            background = OpenWisprUi.surface(context, 0, OpenWisprUi.bg(context))
+            background = OpenWisprUi.rounded(OpenWisprUi.bg(context), 0)
         }
         addView(column, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         column.addView(container, LinearLayout.LayoutParams(
@@ -190,6 +213,7 @@ class NotesTimelineView(
                 )
                 android.widget.Toast.makeText(context, "Transcript copied", android.widget.Toast.LENGTH_SHORT).show()
             },
+            onPlay = { note -> NoteDetailDialog(context, note.id) { refreshNotes() }.show() },
             onDelete = { note ->
                 AlertDialog.Builder(context)
                     .setTitle("Delete note?")
@@ -226,63 +250,66 @@ class NotesTimelineView(
         // overlapped the last note and sat on top of the gesture bar.
         // One control only: an earlier revision showed both a FAB and a pill,
         // which read as two competing primary actions.
+        // Precision-hardware dock: flat graphite, a 1dp top border, restrained
+        // corner radii. Record carries the red active state; Import stays
+        // neutral. No glass capsule, no gradient.
         recordBar = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(OpenWisprUi.SPACE_LG), dp(OpenWisprUi.SPACE_MD),
-                        dp(OpenWisprUi.SPACE_LG), dp(OpenWisprUi.SPACE_MD))
-            setBackgroundColor(OpenWisprUi.bg(context))
+            setPadding(dp(OpenWisprUi.GUTTER), dp(OpenWisprUi.SPACE_MD),
+                        dp(OpenWisprUi.GUTTER), dp(OpenWisprUi.SPACE_MD))
+            background = OpenWisprUi.rounded(OpenWisprUi.surface(context), 0)
         }
-        // Hairline so the bar reads as a separate surface rather than a gap.
         recordBar.addView(View(context).apply {
-            setBackgroundColor(0x1FFFFFFF)
+            setBackgroundColor(OpenWisprUi.border(context))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(1)
             )
         })
-        // The word names the action; a bare mic glyph was too ambiguous on its
-        // own, and a decorative bullet character was worse. A full-bleed red
-        // slab dominated every screenshot, so the button is inset and rounded.
-        recordFab = MaterialButton(context).apply {
-            text = "Record voice note"
-            textSize = 15f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(0xFFFFFFFF.toInt())
-            backgroundTintList = ColorStateList.valueOf(OpenWisprUi.RECORD)
-            cornerRadius = dp(14)
-            // Weighted so Record and Import share the bar, Record first.
-            val lp = LinearLayout.LayoutParams(0, dp(48), 1f)
-            layoutParams = lp
-            isClickable = true
-            isFocusable = true
-            contentDescription = "Record voice note"
-            setOnClickListener { startRecordingFlow() }
-        }
 
-        // Secondary action in the same bar: bring an existing audio file in as a
-        // Voice Note. The bar is a vertical column (hairline + actions), so the
-        // two buttons sit in their own horizontal row.
         val actionRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, dp(OpenWisprUi.SPACE_MD), 0, 0)
         }
-        actionRow.addView(recordFab, LinearLayout.LayoutParams(0, dp(48), 1f))
+
+        // Import: secondary. Neutral surface, hairline border, muted label.
         val importBtn = MaterialButton(context).apply {
-            text = "Import voice note"
-            textSize = 15f
+            text = "Import"
+            textSize = 14f
             setTypeface(typeface, Typeface.BOLD)
-            setTextColor(OpenWisprUi.primaryText(context))
-            backgroundTintList = ColorStateList.valueOf(OpenWisprUi.card(context))
-            cornerRadius = dp(14)
-            val ilp = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
-                marginStart = dp(OpenWisprUi.SPACE_SM)
-            }
-            layoutParams = ilp
+            setTextColor(OpenWisprUi.textSecondary(context))
+            backgroundTintList = ColorStateList.valueOf(OpenWisprUi.surfaceElevated(context))
+            strokeColor = ColorStateList.valueOf(OpenWisprUi.border(context))
+            strokeWidth = dp(1)
+            cornerRadius = dp(OpenWisprUi.RADIUS_CONTROL)
+            isAllCaps = false
+            layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f)
             isClickable = true
             isFocusable = true
             contentDescription = "Import voice note from a file"
             setOnClickListener { launchImportPicker() }
         }
         actionRow.addView(importBtn)
+
+        // Record: primary. The only saturated red surface in the chrome.
+        recordFab = MaterialButton(context).apply {
+            text = "Record"
+            textSize = 15f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(0xFFFFFFFF.toInt())
+            backgroundTintList = ColorStateList.valueOf(OpenWisprUi.RED)
+            cornerRadius = dp(OpenWisprUi.RADIUS_CONTROL)
+            isAllCaps = false
+            layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f).apply {
+                marginStart = dp(OpenWisprUi.SPACE_MD)
+            }
+            isClickable = true
+            isFocusable = true
+            contentDescription = "Record voice note"
+            setOnClickListener { startRecordingFlow() }
+        }
+        actionRow.addView(recordFab)
+
         recordBar.addView(actionRow)
 
         addView(recordBar, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
@@ -299,8 +326,9 @@ class NotesTimelineView(
         recordingOverlay = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setBackgroundColor(OpenWisprUi.BACKGROUND)
-            setPadding(dp(32), dp(48), dp(32), dp(48))
+            setBackgroundColor(OpenWisprUi.bg(context))
+            setPadding(dp(OpenWisprUi.GUTTER), dp(OpenWisprUi.SPACE_XL),
+                        dp(OpenWisprUi.GUTTER), dp(OpenWisprUi.SPACE_XL))
             visibility = View.GONE
             isClickable = true
             isFocusable = true
@@ -308,9 +336,10 @@ class NotesTimelineView(
 
         recTimerText = TextView(context).apply {
             text = "00:00"
-            textSize = 44f
+            textSize = 56f
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
-            setTextColor(0xFFFFFFFF.toInt())
+            letterSpacing = 0.02f
+            setTextColor(OpenWisprUi.RED_ACTIVE)
             gravity = Gravity.CENTER
         }
         recordingOverlay.addView(recTimerText)
@@ -319,8 +348,8 @@ class NotesTimelineView(
             isIndeterminate = false
             max = 100
             progress = 0
-            trackColor = 0xFF2A2A2A.toInt()
-            setIndicatorColor(0xFFEF4444.toInt())
+            trackColor = OpenWisprUi.SURFACE_ELEVATED
+            setIndicatorColor(OpenWisprUi.RED)
             trackCornerRadius = dp(2)
             val lp = LinearLayout.LayoutParams(dp(180), dp(4)).apply {
                 topMargin = dp(20)
@@ -332,8 +361,8 @@ class NotesTimelineView(
 
         val recLabel = TextView(context).apply {
             text = "Recording voice note\n\nTap stop when you're done"
-            textSize = 14f
-            setTextColor(0xFF888888.toInt())
+            textSize = OpenWisprUi.BODY_SP
+            setTextColor(OpenWisprUi.textMuted(context))
             gravity = Gravity.CENTER
             val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 bottomMargin = dp(36)
@@ -345,8 +374,9 @@ class NotesTimelineView(
         recStopBtn = MaterialButton(context).apply {
             text = "STOP"
             textSize = 15f
+            isAllCaps = true
             setTypeface(typeface, Typeface.BOLD)
-            setBackgroundColor(0xFFEF4444.toInt())
+            setBackgroundColor(OpenWisprUi.RED)
             setTextColor(0xFFFFFFFF.toInt())
             cornerRadius = dp(24)
             minWidth = dp(140)
@@ -608,6 +638,14 @@ class NotesTimelineView(
         } else {
             repo.searchNotes(currentSearchQuery)
         }
+
+        countLabel.text = when {
+            currentSearchQuery.isNotEmpty() ->
+                "${allNotes.size} result${if (allNotes.size == 1) "" else "s"}"
+            allNotes.isEmpty() -> ""
+            else -> "${allNotes.size} note${if (allNotes.size == 1) "" else "s"}"
+        }
+        filterRow.visibility = if (countLabel.text.isEmpty()) View.GONE else View.VISIBLE
 
         if (allNotes.isEmpty()) {
             emptyView.visibility = View.VISIBLE

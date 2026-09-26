@@ -104,32 +104,31 @@ class NoteDetailDialog(
         topBar.addView(moreBtn)
         root.addView(topBar)
 
-        // ================= HEADER: Title & Date =================
+        // ================= HEADER: title + subdued metadata =================
         titleText = TextView(context).apply {
-            textSize = 22f
+            textSize = OpenWisprUi.NOTE_TITLE_SP + 2f
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(OpenWisprUi.primaryText(context))
+            setLineSpacing(0f, 1.2f)
         }
         root.addView(titleText)
 
         dateText = TextView(context).apply {
-            textSize = 14f
+            textSize = OpenWisprUi.META_SP
             setTextColor(OpenWisprUi.mutedText(context))
             setPadding(0, dp(OpenWisprUi.SPACE_XS), 0, dp(OpenWisprUi.SPACE_MD))
         }
         root.addView(dateText)
 
-        // ================= AUDIO PLAYER CARD =================
-        // [ Play ] ━━━━━●━━━━━━━━ 2:43
-        //          00:41            1×
+        // ================= AUDIO PLAYER (compact row) =================
+        // ▶  00:41 ━━━━●━━━━ 4:32  1×
+        // A note's recording is short, so the player stays a single row; the
+        // transcript is what deserves the screen.
         val playerCard = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            // A recording for a note is short (seconds to a couple of minutes),
-            // so the player is a compact row rather than a large card; the
-            // transcript is what deserves the space.
-            setPadding(dp(OpenWisprUi.SPACE_MD), dp(OpenWisprUi.SPACE_SM),
-                        dp(OpenWisprUi.SPACE_MD), dp(OpenWisprUi.SPACE_SM))
-            background = OpenWisprUi.surface(context)
+            setPadding(dp(OpenWisprUi.SPACE_MD), dp(6),
+                        dp(OpenWisprUi.SPACE_MD), dp(6))
+            background = OpenWisprUi.outlinedSurface(context)
             val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 bottomMargin = dp(OpenWisprUi.SPACE_LG)
             }
@@ -287,15 +286,16 @@ class NoteDetailDialog(
         // most generously spaced element. Arabic needs extra leading to read
         // comfortably; lineSpacingMultiplier does that without changing the
         // stored text.
+        // Transcript is the hero of this screen: largest type, most generous
+        // line height, selectable, and the only element that gets the content
+        // column. The string is passed through untouched; BiDi is a view-level
+        // concern (see OpenWisprUi.applyTranscriptDirection).
         transcriptText = TextView(context).apply {
-            textSize = 17f
+            textSize = OpenWisprUi.TRANSCRIPT_SP
             setTextColor(OpenWisprUi.primaryText(context))
-            setLineSpacing(0f, 1.45f)
-            setPadding(0, dp(4), 0, dp(20))
+            setLineSpacing(0f, 1.5f)
+            setPadding(0, dp(OpenWisprUi.SPACE_SM), 0, dp(OpenWisprUi.SPACE_XL))
             setTextIsSelectable(true)
-            // BiDi base direction comes from the transcript content itself, so
-            // mixed Arabic/English keeps its natural order on screen. The stored
-            // string is untouched.
             OpenWisprUi.applyTranscriptDirection(this)
         }
         transcriptContainer.addView(transcriptText)
@@ -324,12 +324,20 @@ class NoteDetailDialog(
             layoutParams = lp
         }
 
+        // Action row: Copy / Share / Edit, all visible but secondary. The red
+        // accent is used once here (Copy), and only as a label colour on a dark
+        // surface -- a saturated red slab per button would make three competing
+        // primaries and drag attention off the transcript.
         editBtn = MaterialButton(context).apply {
             text = "Edit"
-            textSize = 14f
-            setTextColor(OpenWisprUi.primaryText(context))
-            setBackgroundColor(OpenWisprUi.card(context))
-            cornerRadius = dp(8)
+            textSize = OpenWisprUi.BODY_SP
+            isAllCaps = false
+            setTextColor(OpenWisprUi.textSecondary(context))
+            backgroundTintList = ColorStateList.valueOf(OpenWisprUi.surfaceElevated(context))
+            strokeColor = ColorStateList.valueOf(OpenWisprUi.border(context))
+            strokeWidth = dp(1)
+            cornerRadius = dp(OpenWisprUi.RADIUS_CONTROL)
+            layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f)
             setOnClickListener { promptEditTranscript() }
         }
         actionRow.addView(editBtn)
@@ -337,23 +345,32 @@ class NoteDetailDialog(
         // Copy is the most common action on a transcript, so it leads the row.
         copyBtn = MaterialButton(context).apply {
             text = "Copy"
-            textSize = 14f
-            setTextColor(OpenWisprUi.primaryText(context))
-            setBackgroundColor(OpenWisprUi.ACCENT)
-            cornerRadius = dp(8)
+            textSize = OpenWisprUi.BODY_SP
+            isAllCaps = false
+            setTextColor(OpenWisprUi.text(context))
+            backgroundTintList = ColorStateList.valueOf(OpenWisprUi.surfaceElevated(context))
+            strokeColor = ColorStateList.valueOf(OpenWisprUi.RED)
+            strokeWidth = dp(1)
+            cornerRadius = dp(OpenWisprUi.RADIUS_CONTROL)
+            layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f).apply {
+                marginStart = dp(OpenWisprUi.SPACE_SM)
+            }
             setOnClickListener { copyTranscript() }
         }
         actionRow.addView(copyBtn)
 
         shareBtn = MaterialButton(context).apply {
             text = "Share"
-            textSize = 14f
-            setTextColor(OpenWisprUi.primaryText(context))
-            cornerRadius = dp(8)
-            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                marginStart = dp(12)
+            textSize = OpenWisprUi.BODY_SP
+            isAllCaps = false
+            setTextColor(OpenWisprUi.textSecondary(context))
+            backgroundTintList = ColorStateList.valueOf(OpenWisprUi.surfaceElevated(context))
+            strokeColor = ColorStateList.valueOf(OpenWisprUi.border(context))
+            strokeWidth = dp(1)
+            cornerRadius = dp(OpenWisprUi.RADIUS_CONTROL)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = dp(OpenWisprUi.SPACE_SM)
             }
-            layoutParams = lp
             setOnClickListener { showShareOptions() }
         }
         actionRow.addView(shareBtn)

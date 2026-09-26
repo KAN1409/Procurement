@@ -93,15 +93,15 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(8), dp(8), dp(16), 0)
-            val backText = TextView(this@MainActivity).apply {
-                text = "‹"
+            val backText = android.widget.ImageButton(this@MainActivity).apply {
+                setImageResource(R.drawable.ic_arrow_back)
+                setColorFilter(OpenWisprUi.textSecondary(this@MainActivity))
                 contentDescription = "Back to notes"
-                textSize = 32f
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(0xFF3B82F6.toInt())
-                gravity = Gravity.CENTER
-                minWidth = dp(48)
-                minHeight = dp(48)
+                background = OpenWisprUi.rounded(0x00000000, dp(10))
+                val pad = dp(12)
+                setPadding(pad, pad, pad, pad)
+                minimumWidth = dp(48)
+                minimumHeight = dp(48)
                 isClickable = true
                 isFocusable = true
                 setOnClickListener { showNotesScreen() }
@@ -137,7 +137,7 @@ class MainActivity : AppCompatActivity() {
 
         setupDoneSummary = TextView(this).apply {
             textSize = 14f
-            setTextColor(DOT_GREEN)
+            setTextColor(OpenWisprUi.SUCCESS_DOT)
             setPadding(dp(24), 0, dp(24), dp(8))
         }
         statusContainer.addView(setupDoneSummary)
@@ -419,10 +419,16 @@ class MainActivity : AppCompatActivity() {
             textSize = 13f
             isAllCaps = false
             minWidth = dp(104)
-            minHeight = dp(48)
-            cornerRadius = dp(10)
+            minHeight = dp(44)
+            cornerRadius = dp(OpenWisprUi.RADIUS_CONTROL)
             insetTop = 0
             insetBottom = 0
+            // Explicit graphite fill with a hairline border. Left to the M3
+            // default the button inherited a blue-tinted surface.
+            backgroundTintList = ColorStateList.valueOf(OpenWisprUi.SURFACE_ELEVATED)
+            setTextColor(OpenWisprUi.RED)
+            strokeColor = ColorStateList.valueOf(OpenWisprUi.BORDER)
+            strokeWidth = dp(1)
         }
 
         val progress = LinearProgressIndicator(this).apply {
@@ -633,9 +639,9 @@ class MainActivity : AppCompatActivity() {
         accCaption.visibility = accRow.visibility
         batteryRow.visibility = rowVisibility(unrestricted)
 
-        audioDot.background = dotDrawable(if (audio) DOT_GREEN else DOT_RED)
-        accDot.background = dotDrawable(if (acc) DOT_GREEN else DOT_RED)
-        batteryDot.background = dotDrawable(if (unrestricted) DOT_GREEN else DOT_RED)
+        audioDot.background = dotDrawable(if (audio) OpenWisprUi.SUCCESS_DOT else OpenWisprUi.RED)
+        accDot.background = dotDrawable(if (acc) OpenWisprUi.SUCCESS_DOT else OpenWisprUi.RED)
+        batteryDot.background = dotDrawable(if (unrestricted) OpenWisprUi.SUCCESS_DOT else OpenWisprUi.RED)
 
         modelContainer.visibility = if (useLocal) View.VISIBLE else View.GONE
         customInstructionsRow.visibility = if (usePostProcessing) View.VISIBLE else View.GONE
@@ -948,13 +954,12 @@ class MainActivity : AppCompatActivity() {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(24), dp(16), dp(24), dp(16))
+            setPadding(dp(OpenWisprUi.GUTTER), dp(OpenWisprUi.SPACE_MD),
+                        dp(OpenWisprUi.GUTTER), dp(OpenWisprUi.SPACE_MD))
             isClickable = onClick != null
             isFocusable = onClick != null
             if (onClick != null) {
-                val outValue = TypedValue()
-                context.theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
-                setBackgroundResource(outValue.resourceId)
+                background = OpenWisprUi.pressableRow(this@MainActivity)
                 setOnClickListener { onClick() }
             }
         }
@@ -985,15 +990,12 @@ class MainActivity : AppCompatActivity() {
         return row
     }
 
-    private fun sectionHeader(title: String) = TextView(this).apply {
-        text = title
-        textSize = 14f
-        setTypeface(typeface, Typeface.BOLD)
-        setTextColor(attrColor(androidx.appcompat.R.attr.colorPrimary)) // Neutral Android-like blue
-        setPadding(dp(24), dp(24), dp(24), dp(8))
-    }
+    private fun sectionHeader(title: String) = OpenWisprUi.sectionHeader(this, title)
 
     private fun vertical(padH: Int, padV: Int = padH) = LinearLayout(this).apply {
+        // Flat: group separation comes from the section label and spacing, not
+        // from wrapping every group in a filled card.
+        setBackgroundColor(0x00000000)
         orientation = LinearLayout.VERTICAL
         setPadding(padH, padV, padH, padV)
     }
@@ -1007,7 +1009,7 @@ class MainActivity : AppCompatActivity() {
         layoutParams = LinearLayout.LayoutParams(dp(10), dp(10)).apply {
             marginEnd = dp(12)
         }
-        background = dotDrawable(DOT_RED)
+        background = dotDrawable(OpenWisprUi.RED)
     }
 
     private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
@@ -1024,7 +1026,5 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val LP_MATCH = LinearLayout.LayoutParams.MATCH_PARENT
         private const val LP_WRAP = LinearLayout.LayoutParams.WRAP_CONTENT
-        private const val DOT_GREEN = 0xFF34C759.toInt()
-        private const val DOT_RED = 0xFFEF4444.toInt()
     }
 }
