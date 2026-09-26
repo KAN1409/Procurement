@@ -292,6 +292,16 @@ class MainActivity : AppCompatActivity() {
 
         settingsContainer.addView(sectionHeader("ABOUT"))
 
+        // Known limitation, stated plainly rather than discovered later.
+        // Whisper conditions a whole decoding window on a single detected
+        // language, so when Arabic opens an utterance, later English inside the
+        // same window is written in Arabic script. Pure Arabic, pure English and
+        // English that starts the utterance are unaffected.
+        settingsContainer.addView(settingsRow(
+            "Mixed Arabic + English",
+            "Arabic must come first in one recording; English after it is written in Arabic"
+        ))
+
         val versionName = try {
             packageManager.getPackageInfo(packageName, 0).versionName ?: "unknown"
         } catch (e: Exception) {
