@@ -86,9 +86,8 @@ internal class NotesAdapter(
             textSize = 15f
             maxLines = 2
             ellipsize = android.text.TextUtils.TruncateAt.END
-            textDirection = View.TEXT_DIRECTION_FIRST_STRONG
-            textAlignment = View.TEXT_ALIGNMENT_VIEW_START
             setLineSpacing(0f, 1.3f)
+            OpenWisprUi.applyTranscriptDirection(this)
         }
         root.addView(body, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))

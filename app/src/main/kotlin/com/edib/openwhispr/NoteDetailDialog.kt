@@ -292,9 +292,11 @@ class NoteDetailDialog(
             setTextColor(OpenWisprUi.primaryText(context))
             setLineSpacing(0f, 1.45f)
             setPadding(0, dp(4), 0, dp(20))
-            textDirection = View.TEXT_DIRECTION_FIRST_STRONG
-            textAlignment = View.TEXT_ALIGNMENT_VIEW_START
             setTextIsSelectable(true)
+            // BiDi base direction comes from the transcript content itself, so
+            // mixed Arabic/English keeps its natural order on screen. The stored
+            // string is untouched.
+            OpenWisprUi.applyTranscriptDirection(this)
         }
         transcriptContainer.addView(transcriptText)
 
@@ -549,10 +551,9 @@ class NoteDetailDialog(
             textSize = 16f
             setTextColor(OpenWisprUi.primaryText(context))
             setHintTextColor(0xFF666666.toInt())
-            textDirection = View.TEXT_DIRECTION_FIRST_STRONG
-            textAlignment = View.TEXT_ALIGNMENT_VIEW_START
             setPadding(dp(16), dp(12), dp(16), dp(12))
             setBackgroundColor(OpenWisprUi.card(context))
+            OpenWisprUi.applyTranscriptDirection(this)
         }
 
         MaterialAlertDialogBuilder(context)
@@ -579,10 +580,9 @@ class NoteDetailDialog(
             text = original
             textSize = 15f
             setTextColor(OpenWisprUi.primaryText(context))
-            textDirection = View.TEXT_DIRECTION_FIRST_STRONG
-            textAlignment = View.TEXT_ALIGNMENT_VIEW_START
             setPadding(dp(20), dp(12), dp(20), dp(12))
             setTextIsSelectable(true)
+            OpenWisprUi.applyTranscriptDirection(this)
         }
 
         MaterialAlertDialogBuilder(context)

@@ -104,6 +104,42 @@ internal object OpenWisprUi {
      * [secondaryText] rather than the dimmest tone: at 12sp bold the muted
      * grey sat below 4.5:1 contrast on the card/background.
      */
+    /**
+     * Apply correct bidirectional rendering to a TextView showing transcript
+     * text.
+     *
+     * Transcripts are routinely one paragraph mixing Egyptian Arabic and
+     * English, so the base direction has to come from the content and the view
+     * must be laid out RTL-aware for Android's BidiFormatter/StaticLayout to
+     * order the runs correctly.
+     *
+     * Measured on a real transcript
+     * ("نعم يا استاز نونو عاوز من بابا ايه؟ What do you want from ... Tell me"),
+     * on a device whose locale is en-US:
+     *
+     *   FIRST_STRONG + VIEW_START        -> English run dragged to the front  ✗
+     *   LOCALE        + VIEW_START       -> English run dragged to the front  ✗
+     *   FIRST_STRONG + TEXT_START        -> correct order, but pure English
+     *                                       was right-aligned                ✗
+     *   layoutDirection RTL + TEXT_START -> correct for mixed, pure English
+     *                                       and pure Arabic                  ✓
+     *
+     * So the view's layout direction is set to RTL and the text is aligned to
+     * TEXT_START. With an RTL view, TEXT_START is the right edge, which is what
+     * Arabic wants, and Android's bidi algorithm still keeps a pure-ASCII
+     * paragraph left-aligned because that paragraph resolves to LTR base
+     * direction. Nothing about the string changes: no reordering, no
+     * directional marks, no normalisation, no splitting. Copy, Share and the
+     * database all still receive the exact raw transcript.
+     */
+    fun applyTranscriptDirection(tv: android.widget.TextView) {
+        tv.layoutDirection = android.view.View.LAYOUT_DIRECTION_RTL
+        tv.textDirection = android.view.View.TEXT_DIRECTION_FIRST_STRONG
+        tv.textAlignment = android.view.View.TEXT_ALIGNMENT_TEXT_START
+        tv.breakStrategy = android.text.Layout.BREAK_STRATEGY_HIGH_QUALITY
+        tv.hyphenationFrequency = android.text.Layout.HYPHENATION_FREQUENCY_NONE
+    }
+
     fun sectionHeader(context: Context, title: String): TextView = TextView(context).apply {
         text = title
         textSize = 12f
