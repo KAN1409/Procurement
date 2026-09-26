@@ -1,6 +1,7 @@
 package com.edib.openwhispr
 
 import android.app.Activity
+import android.util.Log
 import android.app.AlertDialog
 import android.content.Context
 import android.content.res.ColorStateList
@@ -16,6 +17,7 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import java.util.Locale
+import kotlin.concurrent.thread
 
 /**
  * Primary Notes screen.
@@ -53,9 +55,12 @@ class NotesTimelineView(
     private val d = context.resources.displayMetrics.density
     private fun dp(v: Int) = (v * d).toInt()
 
-    private companion object {
-        /** Bottom content inset that keeps the last card clear of the record bar. */
-        const val RECORD_BAR_INSET = 76
+    companion object {
+        /** Request code for the system document picker used by Import. */
+        const val REQUEST_IMPORT_AUDIO = 0xA11
+
+        private const val RECORD_BAR_INSET = 76
+        private const val TAG = "NotesTimelineView"
     }
 
     init {
@@ -118,8 +123,7 @@ class NotesTimelineView(
             setTextColor(OpenWisprUi.primaryText(context))
             textSize = 15f
             background = null
-            textDirection = View.TEXT_DIRECTION_FIRST_STRONG
-            textAlignment = View.TEXT_ALIGNMENT_VIEW_START
+            OpenWisprUi.applyTranscriptDirection(this)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -245,16 +249,42 @@ class NotesTimelineView(
             setTextColor(0xFFFFFFFF.toInt())
             backgroundTintList = ColorStateList.valueOf(OpenWisprUi.RECORD)
             cornerRadius = dp(14)
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(48)
-            )
+            // Weighted so Record and Import share the bar, Record first.
+            val lp = LinearLayout.LayoutParams(0, dp(48), 1f)
             layoutParams = lp
             isClickable = true
             isFocusable = true
             contentDescription = "Record voice note"
             setOnClickListener { startRecordingFlow() }
         }
-        recordBar.addView(recordFab)
+
+        // Secondary action in the same bar: bring an existing audio file in as a
+        // Voice Note. The bar is a vertical column (hairline + actions), so the
+        // two buttons sit in their own horizontal row.
+        val actionRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        actionRow.addView(recordFab, LinearLayout.LayoutParams(0, dp(48), 1f))
+        val importBtn = MaterialButton(context).apply {
+            text = "Import voice note"
+            textSize = 15f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(OpenWisprUi.primaryText(context))
+            backgroundTintList = ColorStateList.valueOf(OpenWisprUi.card(context))
+            cornerRadius = dp(14)
+            val ilp = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+                marginStart = dp(OpenWisprUi.SPACE_SM)
+            }
+            layoutParams = ilp
+            isClickable = true
+            isFocusable = true
+            contentDescription = "Import voice note from a file"
+            setOnClickListener { launchImportPicker() }
+        }
+        actionRow.addView(importBtn)
+        recordBar.addView(actionRow)
+
         addView(recordBar, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
             gravity = Gravity.BOTTOM
         })
@@ -361,6 +391,154 @@ class NotesTimelineView(
     }
 
     fun isRecording(): Boolean = recorder.isRecording
+
+    /**
+     * Open the system document picker to import an existing audio file as a
+     * Voice Note. Uses the Storage Access Framework, so no broad storage
+     * permission is requested. The result is delivered back through
+     * [onImportPicked], which MainActivity forwards from onActivityResult.
+     */
+    fun launchImportPicker() {
+        val activity = context as? Activity ?: return
+        val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(android.content.Intent.CATEGORY_OPENABLE)
+            // Audio containers only. The transcription engine decodes whatever
+            // MediaExtractor supports, so the filter stays broad but audio-only.
+            type = "audio/*"
+            putExtra(
+                android.content.Intent.EXTRA_MIME_TYPES,
+                arrayOf(
+                    "audio/*",
+                    "audio/mpeg", "audio/mp4", "audio/x-m4a", "audio/aac",
+                    "audio/wav", "audio/x-wav", "audio/ogg", "audio/opus",
+                    "audio/flac", "audio/3gpp", "audio/amr", "audio/webm"
+                )
+            )
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try {
+            activity.startActivityForResult(intent, REQUEST_IMPORT_AUDIO)
+        } catch (_: Exception) {
+            Toast.makeText(context, "No file picker available", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Copy a picked document into private note storage and create the Voice
+     * Note. The note is then handed to the exact same
+     * [NoteTranscriber.transcribeNoteAsync] call the recorder uses, so imported
+     * and recorded notes converge before transcription and share its progress
+     * state, Local/Cloud routing and failure behaviour.
+     */
+    fun onImportPicked(resultCode: Int, data: android.content.Intent?) {
+        if (resultCode != Activity.RESULT_OK) return   // cancelled: no state change
+        val uri = data?.data
+        if (uri == null) {
+            Toast.makeText(context, "Import failed: no file selected", Toast.LENGTH_SHORT).show()
+            return
+        }
+        importFromUri(uri)
+    }
+
+    private fun importFromUri(uri: android.net.Uri) {
+        val resolver = context.contentResolver
+        // Persist the read grant where the provider allows it; we copy
+        // immediately regardless, so a refusal here is not fatal. A file:// URI
+        // has no persistable grant at all, so the failure is expected there.
+        try {
+            resolver.takePersistableUriPermission(
+                uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        } catch (_: Throwable) {
+        }
+
+        thread(name = "import-voice-note") {
+            var noteId: String? = null
+            try {
+                val raw = resolver.openInputStream(uri)?.use { it.readBytes() }
+                    ?: throw IllegalStateException("Could not open the selected file")
+                if (raw.isEmpty()) throw IllegalStateException("Selected file is empty")
+
+                // NotesRepository persists audio as "<id>.wav" and the rest of
+                // the app (playback, share, duration) assumes a WAV. A picked
+                // file may be any container the decoder supports, so anything
+                // that is not already RIFF/WAVE is transcoded to 16 kHz mono
+                // PCM WAV here, before the note is created. That keeps imported
+                // notes indistinguishable from recorded ones and leaves the
+                // transcription pipeline reading a normal WAV.
+                val wav = AudioImport.ensureWav16kMono(context, raw)
+                val note = NotesRepository.getInstance(context)
+                    .createAndSaveNoteFromWav(wav, durationMsOf(wav))
+                noteId = note.id
+                NoteTranscriber.transcribeNoteAsync(context, note.id)
+            } catch (e: OutOfMemoryError) {
+                Log.e(TAG, "Out of memory importing audio", e)
+                noteId?.let {
+                    NotesRepository.getInstance(context)
+                        .markTranscriptionFailed(it, "Not enough memory to import this file")
+                }
+                post { Toast.makeText(context, "Import failed: file too large", Toast.LENGTH_SHORT).show() }
+            } catch (e: Exception) {
+                Log.e(TAG, "Import failed", e)
+                noteId?.let {
+                    NotesRepository.getInstance(context)
+                        .markTranscriptionFailed(it, e.message ?: "Import failed")
+                }
+                post {
+                    Toast.makeText(
+                        context,
+                        "Import failed: ${e.message ?: "could not read the file"}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun isWav(b: ByteArray): Boolean =
+        b.size > 44 &&
+            b[0] == 'R'.code.toByte() && b[1] == 'I'.code.toByte() &&
+            b[2] == 'F'.code.toByte() && b[3] == 'F'.code.toByte() &&
+            b[8] == 'W'.code.toByte() && b[9] == 'A'.code.toByte() &&
+            b[10] == 'V'.code.toByte() && b[11] == 'E'.code.toByte()
+
+    /**
+     * Duration in ms from a RIFF/WAVE header.
+     *
+     * Walks the chunk list rather than assuming a 44-byte canonical header, so
+     * files carrying LIST/fact chunks (common in recorded m4a->wav conversions)
+     * are measured correctly. Returns 0 when the header is not a usable WAV.
+     */
+    private fun durationMsOf(wav: ByteArray): Long {
+        if (!isWav(wav) || wav.size < 44) return 0L
+        // RIFF/WAVE integers are LITTLE-endian (this is also what WavWriter
+        // emits). Reading them big-endian yields garbage, which is why an
+        // imported note was showing ~3 s for a 12.5 s file.
+        fun u32(o: Int): Long =
+            ((wav[o + 3].toLong() and 0xFF) shl 24) or
+            ((wav[o + 2].toLong() and 0xFF) shl 16) or
+            ((wav[o + 1].toLong() and 0xFF) shl 8) or
+            (wav[o].toLong() and 0xFF)
+
+        var p = 12
+        var byteRate = 0L
+        var dataSize = 0L
+        while (p + 8 <= wav.size) {
+            val id = String(wav, p, 4, Charsets.ISO_8859_1)
+            val size = u32(p + 4).toInt()
+            val body = p + 8
+            when (id) {
+                // fmt body layout (offsets from the chunk body):
+                //   audioFormat +0, channels +2, sampleRate +4, byteRate +8,
+                //   blockAlign +12, bitsPerSample +14
+                "fmt " -> if (body + 16 <= wav.size) byteRate = u32(body + 8)
+                "data" -> { dataSize = size.toLong(); break }
+            }
+            p = body + size + (size and 1)   // chunks are word-aligned
+        }
+        if (byteRate <= 0L || dataSize <= 0L) return 0L
+        return (dataSize * 1000L) / byteRate
+    }
 
     private fun startRecordingFlow() {
         if (context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)

@@ -386,6 +386,23 @@ class MainActivity : AppCompatActivity() {
         super.onRequestPermissionsResult(c, p, r); refresh()
     }
 
+    /**
+     * Forwards the system document picker's result to the notes screen, which
+     * copies the chosen audio into private storage and runs it through the
+     * normal transcription pipeline. This is a View, so it cannot register for
+     * activity results itself.
+     */
+    @Deprecated("Uses the activity's onActivityResult for the document picker")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == NotesTimelineView.REQUEST_IMPORT_AUDIO) {
+            if (::notesView.isInitialized) {
+                notesView.onImportPicked(resultCode, data)
+            }
+            return
+        }
+    }
+
     // --- Model Rows ---
 
     private fun buildModelRow(model: Model): View {
