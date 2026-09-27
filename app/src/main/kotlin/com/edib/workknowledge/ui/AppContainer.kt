@@ -1,7 +1,6 @@
 package com.edib.workknowledge.ui
 
 import android.content.Context
-import androidx.room.Room
 import com.edib.workknowledge.data.WorkKnowledgeDatabase
 import com.edib.workknowledge.data.WorkRepository
 import com.edib.workknowledge.embeddings.EmbeddingProviderFactory
@@ -23,9 +22,9 @@ class AppContainer(context: Context) {
     private val appContext: Context = context.applicationContext
 
     val database: WorkKnowledgeDatabase by lazy {
-        Room.databaseBuilder(appContext, WorkKnowledgeDatabase::class.java, "workknowledge.db")
-            .fallbackToDestructiveMigration()
-            .build()
+        // Must be the same instance the repository uses, and must not carry a
+        // destructive fallback: the v1 -> v2 migration preserves existing data.
+        WorkKnowledgeDatabase.getInstance(appContext)
     }
 
     val repository: WorkRepository by lazy { WorkRepository(appContext) }

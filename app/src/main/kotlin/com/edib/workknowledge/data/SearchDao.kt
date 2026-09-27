@@ -42,13 +42,16 @@ interface SearchDao {
     suspend fun count(): Int
 
     /**
-     * Raw MATCH query, ordered by SQLite's own bm25 relevance (lower is
-     * better). Ranking and exact-match boosting happen in
-     * [com.edib.workknowledge.search.DocumentSearch] so the behaviour is
-     * unit-testable without a database.
+     * Raw MATCH query.
+     *
+     * Deliberately no `bm25()`: that auxiliary function is not available in
+     * every SQLite build Android ships, and it fails the whole query when it
+     * is missing. Relevance is therefore computed in
+     * [com.edib.workknowledge.search.DocumentSearch.rank], which is also
+     * where it can be unit-tested.
      */
     @Query(
-        "SELECT rowid, content, filename, projectName, sheetName, bm25(chunks_fts) AS rank " +
+        "SELECT rowid, content, filename, projectName, sheetName " +
             "FROM chunks_fts WHERE chunks_fts MATCH :query LIMIT :limit"
     )
     suspend fun match(query: String, limit: Int): List<FtsHit>
@@ -56,27 +59,42 @@ interface SearchDao {
     /**
      * Full body plus provenance, for the retrieval path.
      *
-     * The optional filters are real SQL predicates, not ignored parameters:
-     * scoping a search to one project or document must actually restrict the
-     * rows returned, otherwise a chat scoped to one project could surface
-     * passages from another.
+     * Split into two statements rather than one with nullable list parameters.
+     * Room cannot bind a null `List` to an `IN` clause, so passing a null
+     * `documentIds` at runtime produced a binding failure that surfaced to the
+     * user as "no matches" instead of a search result. Choosing the statement
+     * in Kotlin makes the null case impossible to express.
      */
     @Query(
         "SELECT f.rowid, f.content, f.filename, f.projectName, f.sheetName, " +
-            "bm25(chunks_fts) AS rank, c.projectId, c.documentId, c.pageNumber, " +
+            "c.projectId, c.documentId, c.pageNumber, " +
             "c.sheetName AS chunkSheet, c.rowStart, c.rowEnd, c.cellRange " +
             "FROM chunks_fts f " +
             "JOIN chunks c ON c.id = f.rowid " +
             "WHERE chunks_fts MATCH :query " +
             "AND (:projectId IS NULL OR c.projectId = :projectId) " +
-            "AND (:documentIds IS NULL OR c.documentId IN (:documentIds)) " +
-            "ORDER BY bm25(chunks_fts) LIMIT :limit"
+            "LIMIT :limit"
     )
     suspend fun matchBodies(
         query: String,
         limit: Int,
-        projectId: Long?,
-        documentIds: List<Long>?
+        projectId: Long?
+    ): List<BodyHit>
+
+    @Query(
+        "SELECT f.rowid, f.content, f.filename, f.projectName, f.sheetName, " +
+            "c.projectId, c.documentId, c.pageNumber, " +
+            "c.sheetName AS chunkSheet, c.rowStart, c.rowEnd, c.cellRange " +
+            "FROM chunks_fts f " +
+            "JOIN chunks c ON c.id = f.rowid " +
+            "WHERE chunks_fts MATCH :query " +
+            "AND c.documentId IN (:documentIds) " +
+            "LIMIT :limit"
+    )
+    suspend fun matchBodiesInDocuments(
+        query: String,
+        limit: Int,
+        documentIds: List<Long>
     ): List<BodyHit>
 
     /**
@@ -104,8 +122,7 @@ interface SearchDao {
         val content: String,
         val filename: String,
         val projectName: String,
-        val sheetName: String,
-        val rank: Double
+        val sheetName: String
     )
 
     data class BodyHit(
@@ -114,7 +131,6 @@ interface SearchDao {
         val filename: String,
         val projectName: String,
         val sheetName: String,
-        val rank: Double,
         val projectId: Long,
         val documentId: Long,
         val pageNumber: Int?,

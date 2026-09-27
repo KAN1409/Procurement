@@ -58,13 +58,16 @@ class DocumentSearch(private val searchDao: SearchDao) {
         projectId: Long? = null,
         documentIds: List<Long>? = null
     ): List<SearchHit> = withContext(Dispatchers.IO) {
-        val match = toMatchExpression(query) ?: return@withContext emptyList()
-        val raw = searchDao.matchBodies(
-            query = match,
-            limit = limit,
-            projectId = projectId,
-            documentIds = documentIds
-        )
+        val match = FtsQueryBuilder.build(query) ?: return@withContext emptyList()
+        val raw = if (documentIds.isNullOrEmpty()) {
+            searchDao.matchBodies(query = match, limit = limit, projectId = projectId)
+        } else {
+            searchDao.matchBodiesInDocuments(
+                query = match,
+                limit = limit,
+                documentIds = documentIds
+            )
+        }
         rank(
             query = query,
             hits = raw.map {
@@ -79,8 +82,7 @@ class DocumentSearch(private val searchDao: SearchDao) {
                     rowStart = it.rowStart,
                     rowEnd = it.rowEnd,
                     cellRange = it.cellRange,
-                    snippet = it.content,
-                    bm25Rank = it.rank
+                    snippet = it.content
                 )
             }
         )
@@ -102,7 +104,7 @@ class DocumentSearch(private val searchDao: SearchDao) {
         return hits
             .map { candidate ->
                 val exact = containsExact(candidate.snippet, candidate.filename, needle)
-                candidate.toHit(scoreOf(exact, candidate.bm25Rank), exact)
+                candidate.toHit(scoreOf(exact, candidate), exact)
             }
             .sortedWith(
                 compareByDescending<SearchHit> { it.exactMatch }
@@ -126,37 +128,38 @@ class DocumentSearch(private val searchDao: SearchDao) {
     }
 
     /**
-     * SQLite's bm25() is negative, more relevant being more negative. It is
-     * mapped onto a small positive range and then dominated by the exact-match
-     * boost, so a literal identifier hit always outranks a fuzzy one.
+     * Relevance without a database ranking function.
+     *
+     * `bm25()` is not present in every SQLite build Android ships, and a query
+     * referencing it fails outright when it is missing, so relevance is
+     * derived from the retrieved text itself. A literal identifier match is
+     * boosted far above a passage that merely contains the terms, which is the
+     * behaviour that matters: `MR-104` must resolve to the MR-104 row.
      */
-    internal fun scoreOf(exact: Boolean, bm25Rank: Double): Float {
-        val relevance = (1f - (bm25Rank / -20.0).toFloat()).coerceIn(0f, 1f)
-        return if (exact) 10f + relevance else relevance
+    internal fun scoreOf(exact: Boolean, candidate: Candidate): Float {
+        val text = candidate.snippet.lowercase()
+        val identifierHits = countIdentifierMatches(candidate, text)
+        val termHits = countTermHits(candidate, text)
+        var score = if (exact) EXACT_BASE else 0f
+        score += identifierHits * IDENTIFIER_BONUS
+        score += termHits * TERM_BONUS
+        // A short passage containing the term is usually the precise hit; a
+        // long paragraph containing it once is usually noise.
+        score -= (text.length / 400f).coerceAtMost(LENGTH_PENALTY_CAP)
+        return score
     }
 
-    /**
-     * Builds a safe FTS4 MATCH expression.
-     *
-     * User input is never interpolated raw: FTS treats `-`, `"`, `*`, `:` and
-     * friends as operators, so `PR-023` would otherwise throw or quietly mean
-     * something else. Each token is quoted and the last gets a prefix `*`.
-     */
-    fun toMatchExpression(query: String): String? {
-        val cleaned = query.trim()
-        if (cleaned.isEmpty()) return null
+    private fun countIdentifierMatches(candidate: Candidate, text: String): Int {
+        var count = 0
+        val file = candidate.filename.lowercase()
+        if (candidate.filename.isNotBlank() && text.contains(file)) count++
+        candidate.sheetName?.let { if (text.contains(it.lowercase())) count++ }
+        return count
+    }
 
-        val tokens = cleaned
-            .split(TOKEN_SPLIT)
-            .filter { it.isNotBlank() }
-        if (tokens.isEmpty()) return null
-
-        return tokens
-            .mapIndexed { index, token ->
-                val quoted = "\"" + token.replace("\"", "\"\"") + "\""
-                if (index == tokens.lastIndex) "$quoted*" else quoted
-            }
-            .joinToString(" AND ")
+    private fun countTermHits(candidate: Candidate, text: String): Int {
+        val haystack = (candidate.filename + " " + text).lowercase()
+        return IDENTIFIER_PATTERN.findAll(haystack).count()
     }
 
     data class Candidate(
@@ -170,8 +173,7 @@ class DocumentSearch(private val searchDao: SearchDao) {
         val rowStart: Int?,
         val rowEnd: Int?,
         val cellRange: String?,
-        val snippet: String,
-        val bm25Rank: Double
+        val snippet: String
     ) {
         fun toHit(score: Float, exact: Boolean) = SearchHit(
             chunkId = chunkId,
@@ -191,6 +193,13 @@ class DocumentSearch(private val searchDao: SearchDao) {
     }
 
     private companion object {
+        const val EXACT_BASE = 10f
+        const val IDENTIFIER_BONUS = 0.35f
+        const val TERM_BONUS = 0.10f
+        const val LENGTH_PENALTY_CAP = 0.5f
+
+        /** Codes such as MR-104, PR-023, CL-201, or any ABC-123 style token. */
+        val IDENTIFIER_PATTERN = Regex("[a-z]{1,6}-[0-9]{1,6}")
         val NON_ALNUM = Regex("[^a-z0-9]+")
         // Keeps Latin letters, digits, underscore, and the Arabic block, so
         // Arabic identifiers are searchable too.

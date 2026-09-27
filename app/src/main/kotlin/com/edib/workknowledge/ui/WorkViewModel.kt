@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -360,6 +361,10 @@ class WorkViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * Exact / keyword search. Deliberately independent of any embedding
      * provider: this must keep working on a device with no AI endpoint.
+     *
+     * Each keystroke cancels the in-flight query. That is safe because the
+     * coroutine only writes its result if it is still the newest job, so a slow
+     * earlier query can never overwrite a newer one.
      */
     fun search(query: String) {
         _searchQuery.value = query
@@ -369,16 +374,28 @@ class WorkViewModel(app: Application) : AndroidViewModel(app) {
             _searching.value = false
             return
         }
-        searchJob = viewModelScope.launch {
+        val job = viewModelScope.launch {
             _searching.value = true
-            _searchResults.value = when (
+            when (
                 val r = repository.search(query, projectId = selectedProjectId.value.takeIf { it > 0 })
             ) {
-                is WorkRepository.OpResult.Success -> r.value
-                is WorkRepository.OpResult.Failure -> emptyList()
+                is WorkRepository.OpResult.Success -> {
+                    // Guard: a superseded query must not clobber the results of
+                    // the one that replaced it.
+                    if (isActive) _searchResults.value = r.value
+                }
+                is WorkRepository.OpResult.Failure -> {
+                    if (isActive) {
+                        // Never swallow a search failure: "no matches" and
+                        // "the query blew up" are very different to a user.
+                        _searchResults.value = emptyList()
+                        _messages.value = UiMessage.Failure("Search failed: ${r.message}")
+                    }
+                }
             }
-            _searching.value = false
+            if (isActive) _searching.value = false
         }
+        searchJob = job
     }
 
     fun refreshSearchIndexSize() {

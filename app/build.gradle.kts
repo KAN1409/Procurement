@@ -134,4 +134,10 @@ dependencies {
     // on the JVM. Production code uses the Android artifact and initialises
     // PDFBoxResourceLoader explicitly.
     testImplementation("org.apache.pdfbox:pdfbox:2.0.31")
+
+    // Test-only: a real SQLite JDBC driver so the migration SQL can be executed
+    // and asserted in a plain JVM test. Room's migration runner is not
+    // reachable without an Android runtime, which is how a malformed FTS
+    // option previously reached production.
+    testImplementation("org.xerial:sqlite-jdbc:3.45.3.0")
 }

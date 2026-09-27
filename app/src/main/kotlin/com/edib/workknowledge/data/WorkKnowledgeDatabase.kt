@@ -45,7 +45,10 @@ abstract class WorkKnowledgeDatabase : RoomDatabase() {
                     "workknowledge.db"
                 )
                     .addMigrations(MIGRATION_1_2)
-                    .fallbackToDestructiveMigrationFrom(1)
+                    // No destructive fallback: v1 -> v2 is a real migration
+                    // that preserves everything already indexed. Supplying both
+                    // a migration and a destructive fallback for the same
+                    // start version makes Room refuse to build the database.
                     .build()
                     .also { instance = it }
             }
