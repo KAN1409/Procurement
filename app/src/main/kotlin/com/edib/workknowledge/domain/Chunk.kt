@@ -24,6 +24,10 @@ data class Chunk(
     val rowEnd: Int? = null,
     val cellRange: String? = null,
     val metadata: ChunkMetadata = ChunkMetadata(),
+    /** Denormalised document filename, mirrored into the full-text index. */
+    val filename: String = "",
+    /** Denormalised project name, mirrored into the full-text index. */
+    val projectName: String = "",
     val createdAt: Long = System.currentTimeMillis()
 ) {
     val hasPageReference: Boolean get() = pageNumber != null
@@ -60,6 +64,8 @@ data class Chunk(
         rowStart = rowStart,
         rowEnd = rowEnd,
         cellRange = cellRange,
+        filename = filename,
+        projectName = projectName,
         metadataJson = Gson().toJson(metadata),
         createdAt = createdAt
     )
@@ -78,6 +84,8 @@ data class Chunk(
             rowEnd = entity.rowEnd,
             cellRange = entity.cellRange,
             metadata = entity.getMetadata(),
+            filename = entity.filename,
+            projectName = entity.projectName,
             createdAt = entity.createdAt
         )
     }

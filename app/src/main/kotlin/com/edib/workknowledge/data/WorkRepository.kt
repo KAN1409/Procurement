@@ -153,8 +153,15 @@ class WorkRepository(context: Context) {
         OpResult.Success(db.documentDao().revisionsOf(documentId))
     }
 
-    /** Deletes the document and, by cascade, its chunks, summary and jobs. */
+    /**
+     * Deletes the document and, by cascade, its chunks, summary and jobs.
+     *
+     * The full-text index is pruned first and explicitly: `chunks_fts` is a
+     * virtual table, so it does not take part in a foreign-key cascade and
+     * would otherwise leave searchable entries for a document that is gone.
+     */
     suspend fun deleteDocument(id: Long): OpResult<Unit> = io {
+        db.searchDao().deleteByDocument(id)
         db.documentDao().delete(id)
         OpResult.Success(Unit)
     }
@@ -234,15 +241,31 @@ class WorkRepository(context: Context) {
 
     /**
      * Wipes every derived artefact for a document so it can be re-indexed
-     * cleanly: chunks (and their vectors), the generated summary, and jobs.
-     * The document row and its original file reference are kept.
+     * cleanly: chunks (and their vectors), the full-text index rows, the
+     * generated summary, and jobs. The document row and its original file
+     * reference are kept.
      */
     suspend fun clearDerivedData(documentId: Long): OpResult<Unit> = io {
+        db.searchDao().deleteByDocument(documentId)
         db.chunkDao().deleteByDocument(documentId)
         db.documentSummaryDao().deleteByDocument(documentId)
         db.processingJobDao().deleteByDocument(documentId)
         OpResult.Success(Unit)
     }
+
+    // ----------------------------------------------------------------- search
+
+    suspend fun search(
+        query: String,
+        limit: Int = 25,
+        projectId: Long? = null,
+        documentIds: List<Long>? = null
+    ): OpResult<List<com.edib.workknowledge.search.SearchHit>> = io {
+        val engine = com.edib.workknowledge.search.DocumentSearch(db.searchDao())
+        OpResult.Success(engine.search(query, limit, projectId, documentIds))
+    }
+
+    suspend fun searchIndexSize(): Int = io { db.searchDao().count() }
 
     // ----------------------------------------------------------------- helpers
 

@@ -12,12 +12,13 @@ import androidx.room.TypeConverters
         ProjectEntity::class,
         DocumentEntity::class,
         ChunkEntity::class,
+        ChunkFtsEntity::class,
         DocumentSummaryEntity::class,
         ChatSessionEntity::class,
         ChatMessageEntity::class,
         ProcessingJobEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(WorkKnowledgeConverters::class)
@@ -26,6 +27,7 @@ abstract class WorkKnowledgeDatabase : RoomDatabase() {
     abstract fun projectDao(): ProjectDao
     abstract fun documentDao(): DocumentDao
     abstract fun chunkDao(): ChunkDao
+    abstract fun searchDao(): SearchDao
     abstract fun documentSummaryDao(): DocumentSummaryDao
     abstract fun chatSessionDao(): ChatSessionDao
     abstract fun chatMessageDao(): ChatMessageDao
@@ -42,7 +44,8 @@ abstract class WorkKnowledgeDatabase : RoomDatabase() {
                     WorkKnowledgeDatabase::class.java,
                     "workknowledge.db"
                 )
-                    .fallbackToDestructiveMigration()
+                    .addMigrations(MIGRATION_1_2)
+                    .fallbackToDestructiveMigrationFrom(1)
                     .build()
                     .also { instance = it }
             }

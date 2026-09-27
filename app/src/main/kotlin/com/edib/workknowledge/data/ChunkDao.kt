@@ -11,6 +11,18 @@ interface ChunkDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(chunks: List<ChunkEntity>): List<Long>
 
+    /**
+     * Updates only the vector blobs of existing rows.
+     *
+     * Chunk ids are stable across the parse -> embed transition, so the
+     * full-text index and every provenance column stay untouched and no
+     * re-index is needed.
+     */
+    @Query(
+        "UPDATE chunks SET embedding = :embedding WHERE id = :id"
+    )
+    suspend fun updateEmbedding(id: Long, embedding: ByteArray?)
+
     @Query("DELETE FROM chunks WHERE documentId = :documentId")
     suspend fun deleteByDocument(documentId: Long): Int
 

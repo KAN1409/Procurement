@@ -39,6 +39,7 @@ import com.edib.workknowledge.ui.screens.ExcelViewerScreen
 import com.edib.workknowledge.ui.screens.HomeScreen
 import com.edib.workknowledge.ui.screens.PdfViewerScreen
 import com.edib.workknowledge.ui.screens.ProjectScreen
+import com.edib.workknowledge.ui.screens.SearchScreen
 import com.edib.workknowledge.ui.screens.SettingsScreen
 
 object Routes {
@@ -49,6 +50,8 @@ object Routes {
     const val EXCEL = "excel/{documentId}?sheet={sheet}&from={from}&to={to}"
     const val SETTINGS = "settings"
     const val DIAGNOSTICS = "diagnostics"
+    const val SEARCH = "search"
+    const val COMPARE = "compare/{projectId}"
 }
 
 /** Where a citation should take the user. */
@@ -77,6 +80,9 @@ fun WorkKnowledgeNavHost(viewModel: WorkViewModel) {
     val asking by viewModel.asking.collectAsStateWithLifecycle()
     val projectId by viewModel.currentProjectId.collectAsStateWithLifecycle()
     val uiMessage by viewModel.messages.collectAsStateWithLifecycle()
+    val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
+    val searching by viewModel.searching.collectAsStateWithLifecycle()
+    val searchIndexSize by viewModel.searchIndexSize.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Import outcomes (including "already indexed") and provider failures are
@@ -127,7 +133,8 @@ fun WorkKnowledgeNavHost(viewModel: WorkViewModel) {
                 },
                 onNewProject = { creating = true },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
-                onOpenDiagnostics = { navController.navigate(Routes.DIAGNOSTICS) }
+                onOpenDiagnostics = { navController.navigate(Routes.DIAGNOSTICS) },
+                onOpenSearch = { navController.navigate(Routes.SEARCH) }
             )
         }
 
@@ -238,6 +245,22 @@ fun WorkKnowledgeNavHost(viewModel: WorkViewModel) {
                     onBack = { navController.popBackStack() }
                 )
             }
+        }
+
+        composable(Routes.SEARCH) {
+            LaunchedEffect(Unit) { viewModel.refreshSearchIndexSize() }
+            SearchScreen(
+                results = searchResults,
+                searching = searching,
+                indexSize = searchIndexSize,
+                onQueryChange = viewModel::search,
+                onOpenHit = { hit ->
+                    viewModel.openSearchHit(hit) { target ->
+                        navController.navigate(documentDetailRoute(target))
+                    }
+                },
+                onBack = { navController.popBackStack() }
+            )
         }
 
         composable(Routes.SETTINGS) {

@@ -57,6 +57,8 @@ class DocumentProcessingWorker(
         val chunkDao = db.chunkDao()
         val summaryDao = db.documentSummaryDao()
         val jobDao = db.processingJobDao()
+        val searchDao = db.searchDao()
+        val projectDao = db.projectDao()
 
         val documentEntity = documentDao.byId(documentId)
             ?: return ListenableWorker.Result.failure()
@@ -108,10 +110,25 @@ class DocumentProcessingWorker(
         // ---- persist chunks (re-index is idempotent) ----
         setStage("Creating ${parsed.chunks.size} chunks", DocumentEntity.ProcessingStatus.CHUNKING, 2)
         chunkDao.deleteByDocument(documentId)
-        chunkDao.insertAll(parsed.chunks.mapIndexed { i, c -> c.toEntity().copy(chunkIndex = i) })
+        searchDao.deleteByDocument(documentId)
 
-        // ---- embed ----
-        setStage("Embedding 0 / ${parsed.chunks.size}", DocumentEntity.ProcessingStatus.EMBEDDING, 3)
+        val projectName = runCatching { projectDao.byId(documentEntity.projectId)?.name }
+            .getOrNull().orEmpty()
+        val sourced = parsed.chunks.mapIndexed { i, c ->
+            c.copy(filename = documentEntity.filename, projectName = projectName).toEntity()
+                .copy(chunkIndex = i)
+        }
+        val insertedIds = chunkDao.insertAll(sourced)
+
+        // The full-text index is written in the same step, so a document with no
+        // AI endpoint configured is still immediately searchable.
+        indexFts(searchDao, insertedIds, sourced)
+
+        // ---- embed (optional enrichment) ----
+        // A missing embedding endpoint must NOT fail ingestion. The source is
+        // already parsed and searchable, so the document stays usable and is
+        // only marked as awaiting AI indexing.
+        setStage("Embedding 0 / ${sourced.size}", DocumentEntity.ProcessingStatus.EMBEDDING, 3)
         val embeddings: EmbeddingProvider = EmbeddingProviderFactory(applicationContext).createProvider()
         val embedded = embedAll(embeddings, parsed.chunks) { done, total ->
             jobDao.update(
@@ -123,16 +140,43 @@ class DocumentProcessingWorker(
                 )
             )
         }
-        if (embedded == null) return fail(
-            documentDao, jobDao, job, documentId, totalSteps,
-            "Embedding failed. Check the embedding provider in Settings."
-        )
 
-        // rewrite rows carrying vectors
-        chunkDao.deleteByDocument(documentId)
-        chunkDao.insertAll(embedded.mapIndexed { i, c -> c.toEntity().copy(chunkIndex = i) })
+        if (embedded == null) {
+            // Degraded but genuinely usable: exact search and the source viewer
+            // work, only semantic enrichment is missing.
+            documentDao.updateStatus(
+                documentId,
+                DocumentEntity.ProcessingStatus.SOURCE_READY,
+                null,
+                System.currentTimeMillis()
+            )
+            jobDao.update(
+                job.copy(
+                    status = JobStatus.COMPLETED,
+                    currentStep = "Source indexed; AI indexing pending (no embedding endpoint)",
+                    progress = 3,
+                    totalSteps = totalSteps,
+                    completedAt = System.currentTimeMillis()
+                )
+            )
+            return ListenableWorker.Result.success(
+                workDataOf(KEY_DOCUMENT_ID to documentId, KEY_AI_PENDING to true)
+            )
+        }
 
-        // ---- summarize ----
+        // Rewrite the same rows carrying vectors. The FTS index is keyed by
+        // chunk id and the ids are unchanged, so it does not need rebuilding.
+        val vectors = parsed.chunks.zip(embedded) { chunk, withVector ->
+            withVector.copy(filename = documentEntity.filename, projectName = projectName)
+        }
+        // Chunk ids are unchanged from the parse step, so provenance and the
+        // full-text index stay valid; only the vector blobs are written.
+        vectors.forEach { v ->
+            val e = v.toEntity()
+            chunkDao.updateEmbedding(e.id, e.embedding)
+        }
+
+        // ---- summarize (optional) ----
         setStage("Generating summary", DocumentEntity.ProcessingStatus.SUMMARIZING, 4)
         val chat: ChatModelProvider = ChatModelProviderFactory(applicationContext).createProvider()
         val summarizer: SummarizationEngine = HierarchicalSummarizationEngine(chat)
@@ -199,6 +243,25 @@ class DocumentProcessingWorker(
         return ListenableWorker.Result.failure(workDataOf(KEY_ERROR to message))
     }
 
+    /** Mirrors freshly written chunk rows into the full-text index. */
+    private suspend fun indexFts(
+        searchDao: SearchDao,
+        ids: List<Long>,
+        entities: List<ChunkEntity>
+    ) {
+        if (ids.isEmpty() || ids.size != entities.size) return
+        val rows = entities.mapIndexed { i, e ->
+            ChunkFtsEntity(
+                rowid = ids[i],
+                content = e.content,
+                filename = e.filename,
+                projectName = e.projectName,
+                sheetName = e.sheetName.orEmpty()
+            )
+        }
+        searchDao.insertAll(rows)
+    }
+
     private suspend fun embedAll(
         provider: EmbeddingProvider,
         chunks: List<Chunk>,
@@ -222,5 +285,6 @@ class DocumentProcessingWorker(
     companion object {
         const val KEY_DOCUMENT_ID = "document_id"
         const val KEY_ERROR = "error"
+        const val KEY_AI_PENDING = "ai_pending"
     }
 }

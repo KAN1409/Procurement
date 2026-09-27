@@ -45,6 +45,15 @@ data class ChunkEntity(
     val rowEnd: Int? = null,
     val cellRange: String? = null,
     val metadataJson: String = "{}",
+
+    /**
+     * Denormalised from the parent document so the full-text index can answer
+     * "which file / sheet / project did this hit come from" without a join on
+     * every row. Kept in sync by the worker on write.
+     */
+    val filename: String = "",
+    val projectName: String = "",
+
     val createdAt: Long = System.currentTimeMillis()
 ) {
     fun getMetadata(): ChunkMetadata =

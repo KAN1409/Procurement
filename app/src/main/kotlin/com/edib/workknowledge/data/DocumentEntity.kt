@@ -41,8 +41,17 @@ data class DocumentEntity(
     val updatedAt: Long = System.currentTimeMillis(),
     val revisionOf: Long? = null
 ) {
+    /**
+     * Pipeline states.
+     *
+     * [SOURCE_READY] is a success state, not a partial failure: the document
+     * was parsed, its chunks are stored and it is fully searchable through
+     * exact search and the source viewer. Only optional AI enrichment
+     * (semantic vectors, generated summary) is still outstanding, and it can be
+     * added later without touching the source file again.
+     */
     enum class ProcessingStatus {
-        QUEUED, PARSING, CHUNKING, EMBEDDING, SUMMARIZING, READY, FAILED
+        QUEUED, PARSING, CHUNKING, EMBEDDING, SUMMARIZING, READY, SOURCE_READY, FAILED
     }
     
     val formattedSize: String

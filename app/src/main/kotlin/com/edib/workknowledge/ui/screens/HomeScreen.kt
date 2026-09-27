@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -43,7 +44,8 @@ fun HomeScreen(
     onProjectClick: (ProjectEntity) -> Unit,
     onNewProject: () -> Unit,
     onOpenSettings: () -> Unit = {},
-    onOpenDiagnostics: () -> Unit = {}
+    onOpenDiagnostics: () -> Unit = {},
+    onOpenSearch: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -66,6 +68,9 @@ fun HomeScreen(
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onOpenSearch) {
+                    Icon(Icons.Filled.Search, contentDescription = "Search")
+                }
                 TextButton(onClick = onOpenDiagnostics) {
                     Icon(Icons.Filled.List, contentDescription = "Diagnostics")
                 }

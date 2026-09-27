@@ -151,6 +151,12 @@ fun StatusChip(status: DocumentEntity.ProcessingStatus, modifier: Modifier = Mod
         DocumentEntity.ProcessingStatus.EMBEDDING -> "Embedding" to MaterialTheme.colorScheme.primary
         DocumentEntity.ProcessingStatus.SUMMARIZING -> "Summarizing" to MaterialTheme.colorScheme.primary
         DocumentEntity.ProcessingStatus.READY -> "Ready" to Color(0xFF4CAF50)
+
+        // Not a failure: the document is parsed, stored and searchable. Only
+        // optional AI enrichment is outstanding.
+        DocumentEntity.ProcessingStatus.SOURCE_READY ->
+            "Searchable · AI pending" to Color(0xFFB9843A)
+
         DocumentEntity.ProcessingStatus.FAILED -> "Failed" to MaterialTheme.colorScheme.error
     }
     Box(

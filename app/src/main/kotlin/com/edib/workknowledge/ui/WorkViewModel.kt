@@ -344,6 +344,75 @@ class WorkViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---------------------------------------------------------------- search
+
+    private val _searchQuery = MutableStateFlow("")
+    private val _searchResults = MutableStateFlow<List<com.edib.workknowledge.search.SearchHit>>(emptyList())
+    private val _searching = MutableStateFlow(false)
+    private val _searchIndexSize = MutableStateFlow(0)
+
+    val searchResults: StateFlow<List<com.edib.workknowledge.search.SearchHit>> = _searchResults.asStateFlow()
+    val searching: StateFlow<Boolean> = _searching.asStateFlow()
+    val searchIndexSize: StateFlow<Int> = _searchIndexSize.asStateFlow()
+
+    private var searchJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * Exact / keyword search. Deliberately independent of any embedding
+     * provider: this must keep working on a device with no AI endpoint.
+     */
+    fun search(query: String) {
+        _searchQuery.value = query
+        searchJob?.cancel()
+        if (query.isBlank()) {
+            _searchResults.value = emptyList()
+            _searching.value = false
+            return
+        }
+        searchJob = viewModelScope.launch {
+            _searching.value = true
+            _searchResults.value = when (
+                val r = repository.search(query, projectId = selectedProjectId.value.takeIf { it > 0 })
+            ) {
+                is WorkRepository.OpResult.Success -> r.value
+                is WorkRepository.OpResult.Failure -> emptyList()
+            }
+            _searching.value = false
+        }
+    }
+
+    fun refreshSearchIndexSize() {
+        viewModelScope.launch { _searchIndexSize.value = repository.searchIndexSize() }
+    }
+
+    /**
+     * Opens a search result at the exact place it was found.
+     *
+     * Reuses the same [CitationTarget] a chat citation produces, so a search
+     * result and an answer's citation navigate identically.
+     */
+    fun openSearchHit(hit: com.edib.workknowledge.search.SearchHit, onReady: (CitationTarget) -> Unit) {
+        viewModelScope.launch {
+            val doc = when (val r = repository.getDocument(hit.documentId)) {
+                is WorkRepository.OpResult.Success -> r.value
+                is WorkRepository.OpResult.Failure -> null
+            } ?: return@launch
+            loadDocument(doc)
+            onReady(
+                CitationTarget(
+                    documentId = doc.id,
+                    filename = doc.filename,
+                    uri = doc.originalUri,
+                    mimeType = doc.mimeType,
+                    page = hit.pageNumber,
+                    sheet = hit.sheetName,
+                    rowStart = hit.rowStart,
+                    rowEnd = hit.rowEnd
+                )
+            )
+        }
+    }
+
     // ------------------------------------------------------------- documents
 
     fun loadDocument(document: DocumentEntity) {
