@@ -29,6 +29,12 @@ interface ChunkDao {
     @Query("SELECT COUNT(*) FROM chunks WHERE projectId = :projectId")
     suspend fun countByProject(projectId: Long): Int
 
+    @Query("SELECT COUNT(*) FROM chunks")
+    suspend fun count(): Int
+
+    @Query("SELECT COUNT(*) FROM chunks WHERE embedding IS NOT NULL")
+    suspend fun countWithVectors(): Int
+
     // Metadata-filtered candidate sets. These narrow the search in SQL so the
     // in-memory cosine pass only ever touches vectors that could match.
 

@@ -128,4 +128,10 @@ dependencies {
     testImplementation("androidx.arch.core:core-testing:2.2.0")
     testImplementation("org.mockito:mockito-core:5.14.1")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
+
+    // Test-only: the plain (non-Android) PDFBox ships its glyph and CMap tables
+    // as ordinary classpath resources, so PDF page extraction can be exercised
+    // on the JVM. Production code uses the Android artifact and initialises
+    // PDFBoxResourceLoader explicitly.
+    testImplementation("org.apache.pdfbox:pdfbox:2.0.31")
 }

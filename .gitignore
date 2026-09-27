@@ -12,3 +12,7 @@ ui-audit/
 fixtures/
 tools/
 apk/
+
+# Runtime-verification fixtures are generated, not hand-maintained binaries
+app/src/test/resources/fixtures/WK_*.pdf
+app/src/test/resources/fixtures/WK_*.xlsx

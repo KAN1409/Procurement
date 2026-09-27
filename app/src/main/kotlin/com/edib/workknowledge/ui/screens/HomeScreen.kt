@@ -14,13 +14,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.Icon
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,6 +25,13 @@ import com.edib.workknowledge.data.ProjectEntity
 import com.edib.workknowledge.ui.components.EmptyState
 import com.edib.workknowledge.ui.components.SectionHeader
 import com.edib.workknowledge.ui.components.WorkDivider
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 
 /**
  * Workspace home. The user arrives here to pick a project; the project list is
@@ -39,7 +41,9 @@ import com.edib.workknowledge.ui.components.WorkDivider
 fun HomeScreen(
     projects: List<ProjectEntity>,
     onProjectClick: (ProjectEntity) -> Unit,
-    onNewProject: () -> Unit
+    onNewProject: () -> Unit,
+    onOpenSettings: () -> Unit = {},
+    onOpenDiagnostics: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -49,7 +53,7 @@ fun HomeScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "WORK KNOWLEDGE",
                     style = MaterialTheme.typography.titleLarge,
@@ -61,10 +65,19 @@ fun HomeScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Button(onClick = onNewProject) {
-                Icon(Icons.Filled.Add, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("New")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onOpenDiagnostics) {
+                    Icon(Icons.Filled.List, contentDescription = "Diagnostics")
+                }
+                TextButton(onClick = onOpenSettings) {
+                    Icon(Icons.Filled.Settings, contentDescription = "Settings")
+                }
+                Spacer(Modifier.width(4.dp))
+                Button(onClick = onNewProject) {
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("New")
+                }
             }
         }
 

@@ -391,10 +391,9 @@ class WorkViewModel(app: Application) : AndroidViewModel(app) {
             val embedding = container.embeddingFactory.getConfig()
             val chat = container.chatFactory.getConfig()
             val dims = repository.embeddedVectorSize()
-            val projectId = selectedProjectId.value
             _diagnostics.value = DiagnosticsState(
-                documentCount = if (projectId > 0) repository.documentCount(projectId) else 0,
-                chunkCount = if (projectId > 0) repository.projectChunkCount(projectId) else 0,
+                documentCount = repository.totalDocumentCount(),
+                chunkCount = repository.totalChunkCount(),
                 embeddingProvider = embedding.providerType.name,
                 embeddingModel = embedding.modelName,
                 storedDimensions = dims,

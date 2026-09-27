@@ -36,6 +36,9 @@ interface DocumentDao {
     @Query("SELECT * FROM documents WHERE revisionOf = :documentId ORDER BY importedAt ASC")
     suspend fun revisionsOf(documentId: Long): List<DocumentEntity>
 
+    @Query("SELECT COUNT(*) FROM documents")
+    suspend fun count(): Int
+
     @Query("UPDATE documents SET revisionOf = :supersedes WHERE id = :id")
     suspend fun setRevisionOf(id: Long, supersedes: Long)
 

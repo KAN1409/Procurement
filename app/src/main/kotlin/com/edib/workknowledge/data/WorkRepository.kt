@@ -173,6 +173,13 @@ class WorkRepository(context: Context) {
 
     suspend fun projectChunkCount(projectId: Long): Int = io { db.chunkDao().countByProject(projectId) }
 
+    /** Index-wide totals, for diagnostics. */
+    suspend fun totalDocumentCount(): Int = io { db.documentDao().count() }
+
+    suspend fun totalChunkCount(): Int = io { db.chunkDao().count() }
+
+    suspend fun embeddedVectorCount(): Int = io { db.chunkDao().countWithVectors() }
+
     suspend fun embeddedVectorSize(): Int = io {
         db.chunkDao().sampleEmbedding()?.let { com.edib.workknowledge.domain.VectorCodec.decode(it)?.size } ?: 0
     }

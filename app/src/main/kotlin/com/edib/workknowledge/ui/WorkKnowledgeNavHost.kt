@@ -4,12 +4,17 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
@@ -71,6 +76,20 @@ fun WorkKnowledgeNavHost(viewModel: WorkViewModel) {
     val messages by viewModel.chatMessages.collectAsStateWithLifecycle()
     val asking by viewModel.asking.collectAsStateWithLifecycle()
     val projectId by viewModel.currentProjectId.collectAsStateWithLifecycle()
+    val uiMessage by viewModel.messages.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Import outcomes (including "already indexed") and provider failures are
+    // only useful if they are actually shown.
+    LaunchedEffect(uiMessage) {
+        val message = uiMessage ?: return@LaunchedEffect
+        val text = when (message) {
+            is com.edib.workknowledge.ui.UiMessage.Info -> message.text
+            is com.edib.workknowledge.ui.UiMessage.Failure -> message.text
+        }
+        snackbarHostState.showSnackbar(text)
+        viewModel.consumeMessage()
+    }
 
     var creating by remember { mutableStateOf(false) }
 
@@ -89,12 +108,14 @@ fun WorkKnowledgeNavHost(viewModel: WorkViewModel) {
         )
     }
 
-    NavHost(
-        navController = navController,
-        startDestination = Routes.HOME,
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .windowInsetsPadding(insets)
+    ) {
+    NavHost(
+        navController = navController,
+        startDestination = Routes.HOME
     ) {
 
         composable(Routes.HOME) {
@@ -104,7 +125,9 @@ fun WorkKnowledgeNavHost(viewModel: WorkViewModel) {
                     viewModel.selectProject(selected.id)
                     navController.navigate("project/${selected.id}")
                 },
-                onNewProject = { creating = true }
+                onNewProject = { creating = true },
+                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                onOpenDiagnostics = { navController.navigate(Routes.DIAGNOSTICS) }
             )
         }
 
@@ -228,6 +251,7 @@ fun WorkKnowledgeNavHost(viewModel: WorkViewModel) {
         }
 
         composable(Routes.DIAGNOSTICS) {
+            LaunchedEffect(Unit) { viewModel.refreshDiagnostics() }
             DiagnosticsScreen(
                 state = viewModel.diagnostics.value,
                 onBack = { navController.popBackStack() },
@@ -236,6 +260,13 @@ fun WorkKnowledgeNavHost(viewModel: WorkViewModel) {
                 onTestChat = viewModel::testChat
             )
         }
+    }
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(16.dp)
+    )
     }
 }
 
