@@ -64,7 +64,8 @@ fun ProjectScreen(
     onDeleteDocument: (DocumentEntity) -> Unit,
     onRenameProject: (String, String) -> Unit,
     onDeleteProject: () -> Unit,
-    onArchiveProject: () -> Unit
+    onArchiveProject: () -> Unit,
+    onCompare: () -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val picker = rememberLauncherForActivityResult(
@@ -95,6 +96,9 @@ fun ProjectScreen(
             showBack = true,
             onBack = onBack,
             actions = {
+                TextButton(onClick = onCompare) {
+                    Text("Compare")
+                }
                 IconButton(onClick = { showRename = true }) {
                     Icon(Icons.Filled.Edit, contentDescription = "Rename project")
                 }

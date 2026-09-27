@@ -33,6 +33,7 @@ import androidx.navigation.navArgument
 import com.edib.workknowledge.data.ChatMessageEntity
 import com.edib.workknowledge.data.DocumentEntity
 import com.edib.workknowledge.ui.screens.ChatScreen
+import com.edib.workknowledge.ui.screens.ComparisonScreen
 import com.edib.workknowledge.ui.screens.DiagnosticsScreen
 import com.edib.workknowledge.ui.screens.DiagnosticsState
 import com.edib.workknowledge.ui.screens.ExcelViewerScreen
@@ -51,7 +52,7 @@ object Routes {
     const val SETTINGS = "settings"
     const val DIAGNOSTICS = "diagnostics"
     const val SEARCH = "search"
-    const val COMPARE = "compare/{projectId}"
+    const val COMPARE = "compare"
 }
 
 /** Where a citation should take the user. */
@@ -83,6 +84,12 @@ fun WorkKnowledgeNavHost(viewModel: WorkViewModel) {
     val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
     val searching by viewModel.searching.collectAsStateWithLifecycle()
     val searchIndexSize by viewModel.searchIndexSize.collectAsStateWithLifecycle()
+    val compareDiff by viewModel.compareDiff.collectAsStateWithLifecycle()
+    val compareLoading by viewModel.compareLoading.collectAsStateWithLifecycle()
+    val compareError by viewModel.compareError.collectAsStateWithLifecycle()
+    val compareOldId by viewModel.compareOldId.collectAsStateWithLifecycle()
+    val compareNewId by viewModel.compareNewId.collectAsStateWithLifecycle()
+    val comparableDocuments by viewModel.comparableDocuments.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Import outcomes (including "already indexed") and provider failures are
@@ -166,6 +173,7 @@ fun WorkKnowledgeNavHost(viewModel: WorkViewModel) {
                         viewModel.deleteProject(current)
                         navController.popBackStack()
                     },
+                    onCompare = { navController.navigate(Routes.COMPARE) },
                     onArchiveProject = {
                         viewModel.setArchived(current, true)
                         navController.popBackStack()
@@ -257,6 +265,31 @@ fun WorkKnowledgeNavHost(viewModel: WorkViewModel) {
                 onOpenHit = { hit ->
                     viewModel.openSearchHit(hit) { target ->
                         navController.navigate(documentDetailRoute(target))
+                    }
+                },
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Routes.COMPARE) {
+            LaunchedEffect(Unit) { viewModel.openComparisonDefaults() }
+            val newDoc = comparableDocuments.firstOrNull { it.id == compareNewId }
+            ComparisonScreen(
+                oldName = comparableDocuments.firstOrNull { it.id == compareOldId }?.filename.orEmpty(),
+                newName = newDoc?.filename.orEmpty(),
+                candidates = comparableDocuments.map { it.id to it.filename },
+                selectedOldId = compareOldId,
+                selectedNewId = compareNewId,
+                diff = compareDiff,
+                loading = compareLoading,
+                error = compareError,
+                onPickOld = viewModel::pickCompareOld,
+                onPickNew = viewModel::pickCompareNew,
+                onOpenRow = { sheet, from, _ ->
+                    if (newDoc != null) {
+                        viewModel.openComparisonRow(newDoc.id, sheet, from) { target ->
+                            navController.navigate(documentDetailRoute(target))
+                        }
                     }
                 },
                 onBack = { navController.popBackStack() }

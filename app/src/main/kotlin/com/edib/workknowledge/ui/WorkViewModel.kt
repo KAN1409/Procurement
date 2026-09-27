@@ -345,6 +345,115 @@ class WorkViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ------------------------------------------------------------- comparison
+
+    private val _compareOldId = MutableStateFlow(0L)
+    private val _compareNewId = MutableStateFlow(0L)
+    private val _compareDiff = MutableStateFlow<com.edib.workknowledge.comparison.WorkbookDiff?>(null)
+    private val _compareLoading = MutableStateFlow(false)
+    private val _compareError = MutableStateFlow<String?>(null)
+
+    val compareOldId: StateFlow<Long> = _compareOldId.asStateFlow()
+    val compareNewId: StateFlow<Long> = _compareNewId.asStateFlow()
+    val compareDiff: StateFlow<com.edib.workknowledge.comparison.WorkbookDiff?> = _compareDiff.asStateFlow()
+    val compareLoading: StateFlow<Boolean> = _compareLoading.asStateFlow()
+    val compareError: StateFlow<String?> = _compareError.asStateFlow()
+
+    /** Workbooks in the current project that can take part in a comparison. */
+    val comparableDocuments: StateFlow<List<com.edib.workknowledge.data.DocumentEntity>> =
+        documents.map { rows -> rows.map { it.document } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun pickCompareOld(id: Long) {
+        _compareOldId.value = id
+        runComparison()
+    }
+
+    fun pickCompareNew(id: Long) {
+        _compareNewId.value = id
+        runComparison()
+    }
+
+    fun openComparisonDefaults() {
+        val list = comparableDocuments.value
+        if (list.size >= 2) {
+            // Oldest first, so the natural pairing is revision N against N+1.
+            val ordered = list.sortedBy { it.importedAt }
+            _compareOldId.value = ordered[ordered.size - 2].id
+            _compareNewId.value = ordered[ordered.size - 1].id
+            runComparison()
+        } else if (list.size == 1) {
+            _compareOldId.value = list[0].id
+            _compareNewId.value = list[0].id
+            _compareError.value = "Import a second revision to compare."
+        } else {
+            _compareError.value = "No workbooks in this project to compare."
+        }
+    }
+
+    /**
+     * Recomputes the diff from the two selected documents.
+     *
+     * The whole comparison is deterministic and local: cells are read from the
+     * files and compared. No model is involved, so this works with no AI
+     * endpoint configured.
+     */
+    private fun runComparison() {
+        val oldId = _compareOldId.value
+        val newId = _compareNewId.value
+        if (oldId == 0L || newId == 0L) return
+        if (oldId == newId) {
+            _compareError.value = "Select two different revisions."
+            _compareDiff.value = null
+            return
+        }
+        viewModelScope.launch {
+            _compareLoading.value = true
+            _compareError.value = null
+            val oldDoc = (repository.getDocument(oldId) as? WorkRepository.OpResult.Success)?.value
+            val newDoc = (repository.getDocument(newId) as? WorkRepository.OpResult.Success)?.value
+            if (oldDoc == null || newDoc == null) {
+                _compareError.value = "One of the selected documents is no longer available."
+                _compareLoading.value = false
+                return@launch
+            }
+            when (
+                val r = com.edib.workknowledge.comparison.DocumentComparisonEngine(
+                    getApplication()
+                ).compare(oldDoc, newDoc)
+            ) {
+                is com.edib.workknowledge.comparison.DocumentComparisonEngine.OpResult.Success ->
+                    _compareDiff.value = r.value
+                is com.edib.workknowledge.comparison.DocumentComparisonEngine.OpResult.Failure ->
+                    {
+                        _compareDiff.value = null
+                        _compareError.value = r.message
+                    }
+            }
+            _compareLoading.value = false
+        }
+    }
+
+    /** Opens a sheet in a workbook at a row, for a comparison hit. */
+    fun openComparisonRow(documentId: Long, sheet: String, rowStart: Int?, onReady: (CitationTarget) -> Unit) {
+        viewModelScope.launch {
+            val doc = (repository.getDocument(documentId) as? WorkRepository.OpResult.Success)?.value
+                ?: return@launch
+            loadDocument(doc)
+            onReady(
+                CitationTarget(
+                    documentId = doc.id,
+                    filename = doc.filename,
+                    uri = doc.originalUri,
+                    mimeType = doc.mimeType,
+                    sheet = sheet,
+                    rowStart = rowStart,
+                    rowEnd = rowStart
+                )
+            )
+        }
+    }
+
     // ---------------------------------------------------------------- search
 
     private val _searchQuery = MutableStateFlow("")
