@@ -64,11 +64,10 @@ object WorkKnowledgeModule {
     }
     
     fun provideRagEngine(
-        embeddingProvider: EmbeddingProvider,
-        vectorRepository: VectorRepository,
+        retriever: com.edib.workknowledge.retrieval.HybridRetriever,
         chatModelProvider: ChatModelProvider
     ): RagEngine {
-        return DefaultRagEngine(embeddingProvider, vectorRepository, chatModelProvider)
+        return DefaultRagEngine(retriever, chatModelProvider)
     }
     
     fun provideOkHttpClient(): OkHttpClient {

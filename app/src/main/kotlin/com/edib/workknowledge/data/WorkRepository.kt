@@ -183,6 +183,8 @@ class WorkRepository(context: Context) {
     /** Index-wide totals, for diagnostics. */
     suspend fun totalDocumentCount(): Int = io { db.documentDao().count() }
 
+    suspend fun totalProjectCount(): Int = io { db.projectDao().count() }
+
     suspend fun totalChunkCount(): Int = io { db.chunkDao().count() }
 
     suspend fun embeddedVectorCount(): Int = io { db.chunkDao().countWithVectors() }

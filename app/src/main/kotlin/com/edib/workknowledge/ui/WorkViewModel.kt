@@ -14,6 +14,7 @@ import com.edib.workknowledge.data.DocumentProcessingWorker
 import com.edib.workknowledge.data.DocumentSummaryEntity
 import com.edib.workknowledge.data.ProjectEntity
 import com.edib.workknowledge.data.WorkRepository
+import com.edib.workknowledge.ui.screens.CapabilityStatus
 import com.edib.workknowledge.ui.screens.DiagnosticsState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -295,17 +296,23 @@ class WorkViewModel(app: Application) : AndroidViewModel(app) {
             when (result) {
                 is com.edib.workknowledge.rag.RagEngine.OpResult.Success -> {
                     val value = result.value
+                    // Citation provenance is copied verbatim from the retrieved
+                    // passage. The model's wording never contributes to it.
                     val citations = value.citations.map { c ->
                         ChatMessageEntity.Citation(
                             chunkId = c.chunkId,
                             documentId = c.documentId,
-                            documentName = c.documentName,
+                            documentName = c.filename,
                             pageNumber = c.pageNumber,
                             sheetName = c.sheetName,
                             rowStart = c.rowStart,
                             rowEnd = c.rowEnd,
                             cellRange = c.cellRange,
-                            snippet = c.snippet
+                            snippet = value.passages
+                                .firstOrNull { it.chunkId == c.chunkId }
+                                ?.content
+                                ?.take(200)
+                                .orEmpty()
                         )
                     }
                     val reply = ChatMessageEntity(
@@ -581,36 +588,96 @@ class WorkViewModel(app: Application) : AndroidViewModel(app) {
 
     // ------------------------------------------------------------ diagnostics
 
+    /**
+     * Reports each capability independently.
+     *
+     * A device with no AI endpoint is not "broken": it parses, stores, indexes
+     * for exact search and opens sources. Only the optional enrichment steps
+     * are unavailable, and each says so on its own.
+     */
     fun refreshDiagnostics() {
         viewModelScope.launch {
             val embedding = container.embeddingFactory.getConfig()
             val chat = container.chatFactory.getConfig()
+
+            val projectCount = repository.totalProjectCount()
+            val documentCount = repository.totalDocumentCount()
+            val chunkCount = repository.totalChunkCount()
+            val ftsCount = repository.searchIndexSize()
+            val embedded = repository.embeddedVectorCount()
             val dims = repository.embeddedVectorSize()
+            val ollamaState = _ollamaState.value
+
+            val sourceStatus = when {
+                documentCount == 0 -> CapabilityStatus.PARTIAL
+                else -> CapabilityStatus.READY
+            }
+
+            // Exact search is available whenever the index is populated and
+            // consistent with the chunk count.
+            val searchStatus = when {
+                ftsCount == 0 && chunkCount > 0 -> CapabilityStatus.ERROR
+                ftsCount > 0 -> CapabilityStatus.READY
+                else -> CapabilityStatus.UNKNOWN
+            }
+
+            val embeddingStatus = when {
+                embedded > 0 && dims == 0 -> CapabilityStatus.ERROR
+                embedded > 0 && dims != _modelDimensions.value && _modelDimensions.value > 0 ->
+                    CapabilityStatus.PARTIAL
+                embedded > 0 -> CapabilityStatus.READY
+                ollamaState == CapabilityStatus.ERROR -> CapabilityStatus.UNAVAILABLE
+                ollamaState == CapabilityStatus.UNKNOWN -> CapabilityStatus.UNKNOWN
+                else -> CapabilityStatus.UNAVAILABLE
+            }
+
+            val chatStatus = when {
+                ollamaState == CapabilityStatus.READY -> CapabilityStatus.READY
+                ollamaState == CapabilityStatus.ERROR -> CapabilityStatus.UNAVAILABLE
+                else -> CapabilityStatus.UNKNOWN
+            }
+
             _diagnostics.value = DiagnosticsState(
-                documentCount = repository.totalDocumentCount(),
-                chunkCount = repository.totalChunkCount(),
+                projects = projectCount,
+                documents = documentCount,
+                chunks = chunkCount,
+                sourceStatus = sourceStatus,
+                sourceDetail = null,
+                ftsIndexed = ftsCount,
+                searchStatus = searchStatus,
+                searchDetail = if (searchStatus == CapabilityStatus.ERROR) {
+                    "Index has ${chunkCount - ftsCount} chunk(s) missing from the search index"
+                } else {
+                    null
+                },
                 embeddingProvider = embedding.providerType.name,
                 embeddingModel = embedding.modelName,
-                storedDimensions = dims,
-                // Reported honestly: whether an index exists, and whether its
-                // vectors match the model that is configured right now.
-                indexStatus = when {
-                    dims == 0 -> "Empty (no vectors stored)"
-                    dims != _modelDimensions.value ->
-                        "Needs rebuild: stored $dims dims, model returns ${_modelDimensions.value}"
-                    else -> "Ready ($dims dims)"
+                embeddedChunks = embedded,
+                embeddingDimension = dims,
+                embeddingStatus = embeddingStatus,
+                embeddingDetail = when (embeddingStatus) {
+                    CapabilityStatus.UNAVAILABLE -> "No embedding endpoint reachable; exact search unaffected"
+                    CapabilityStatus.PARTIAL ->
+                        "Stored vectors are $dims dims, model returns ${_modelDimensions.value}"
+                    else -> null
                 },
                 chatProvider = chat.providerType.name,
                 chatModel = chat.modelName,
+                chatStatus = chatStatus,
+                chatDetail = if (chatStatus == CapabilityStatus.UNAVAILABLE) {
+                    "No chat endpoint reachable; answers unavailable"
+                } else {
+                    null
+                },
                 hasApiKey = !chat.apiKey.isNullOrBlank(),
                 ollamaUrl = chat.ollamaBaseUrl,
-                ollamaStatus = _ollamaStatus.value,
+                ollamaStatus = ollamaState,
                 recentErrors = _recentErrors.toList()
             )
         }
     }
 
-    private val _ollamaStatus = MutableStateFlow("Not tested")
+    private val _ollamaState = MutableStateFlow(CapabilityStatus.UNKNOWN)
     private val _recentErrors = java.util.concurrent.ConcurrentLinkedQueue<Pair<String, Long>>()
 
     /**
@@ -638,13 +705,18 @@ class WorkViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }.getOrNull() == true
 
-            _ollamaStatus.value = if (reachable) "Connected" else "Unreachable"
+            _ollamaState.value = if (reachable) {
+                CapabilityStatus.READY
+            } else {
+                CapabilityStatus.ERROR
+            }
             _messages.value = if (reachable) {
                 UiMessage.Info("Ollama responded at $url.")
             } else {
                 UiMessage.Failure(
                     "Could not reach Ollama at $url. On a physical device this must be the " +
-                        "host's LAN address (for example http://192.168.1.10:11434), not 10.0.2.2."
+                        "host's LAN address (for example http://192.168.1.10:11434), not 10.0.2.2. " +
+                        "Exact search is unaffected."
                 )
             }
             refreshDiagnostics()

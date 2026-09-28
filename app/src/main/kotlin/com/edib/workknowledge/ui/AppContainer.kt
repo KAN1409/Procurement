@@ -34,10 +34,29 @@ class AppContainer(context: Context) {
     val embeddingFactory by lazy { EmbeddingProviderFactory(appContext) }
     val chatFactory by lazy { ChatModelProviderFactory(appContext) }
 
+    val documentSearch by lazy {
+        com.edib.workknowledge.search.DocumentSearch(database.searchDao())
+    }
+
+    /**
+     * The single retrieval entry point.
+     *
+     * Constructed with no embedding provider so it works in search-only mode:
+     * exact retrieval needs no endpoint, and a semantic route is added later
+     * once vectors exist. Both are then merged by the same object, so there is
+     * one authoritative retrieval implementation.
+     */
+    val hybridRetriever by lazy {
+        com.edib.workknowledge.retrieval.HybridRetriever(
+            search = documentSearch,
+            vectorRepository = vectorRepository,
+            embeddingProvider = embeddingFactory.createProvider()
+        )
+    }
+
     val ragEngine by lazy {
         DefaultRagEngine(
-            embeddingProvider = embeddingFactory.createProvider(),
-            vectorRepository = vectorRepository,
+            retriever = hybridRetriever,
             chatModelProvider = chatFactory.createProvider(),
             config = RagConfig()
         )

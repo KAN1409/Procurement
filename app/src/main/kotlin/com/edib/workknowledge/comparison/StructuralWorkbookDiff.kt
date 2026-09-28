@@ -272,8 +272,12 @@ data class CellChange(
 ) {
     /** e.g. "Quantity 37.5 -> 42.0" */
     fun describe(): String = when (kind) {
-        ChangeKind.FORMULA -> "$column formula: $oldDisplay -> $newDisplay"
-        ChangeKind.FORMULA_AND_VALUE -> "$column: $oldDisplay -> $newDisplay ($detail)"
+        // A formula change must show the formulas themselves. The cached values
+        // of an uncalculated workbook are often both "0", which would render as
+        // a meaningless "0 -> 0".
+        ChangeKind.FORMULA -> detail ?: "$column formula changed"
+        ChangeKind.FORMULA_AND_VALUE ->
+            "$column: ${oldDisplay ?: "(empty)"} -> ${newDisplay ?: "(empty)"}; $detail"
         else -> "$column: ${oldDisplay ?: "(empty)"} -> ${newDisplay ?: "(empty)"}"
     }
 }

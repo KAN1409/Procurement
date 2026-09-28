@@ -123,6 +123,20 @@ class StructuralWorkbookDiffTest {
     }
 
     @Test
+    fun `a formula change shows the formulas, not their cached values`() {
+        // The fixture has no calculated results, so both cached values are "0".
+        // Rendering "0 -> 0" would tell the user nothing; the formulas must show.
+        val change = diffRevisions().changedCells.single { it.key == "MR-120" }
+        assertEquals("Amount", change.column)
+        val described = change.describe()
+        assertTrue(
+            "a formula change must render the formulas, got: $described",
+            described.contains("D5*E5") && described.contains("D5*E5*1.05")
+        )
+        assertFalse("a meaningless 0 -> 0 must not be shown", described.contains("0 -> 0"))
+    }
+
+    @Test
     fun `unchanged rows are not reported`() {
         val keys = diffRevisions().changedCells.mapNotNull { it.key }.toSet()
         assertFalse("MR-110 is identical in both revisions", keys.contains("MR-110"))

@@ -30,6 +30,9 @@ interface ProjectDao {
     @Query("SELECT * FROM projects ORDER BY updatedAt DESC")
     fun observeAll(): Flow<List<ProjectEntity>>
 
+    @Query("SELECT COUNT(*) FROM projects")
+    suspend fun count(): Int
+
     @Query("SELECT COUNT(*) FROM documents WHERE projectId = :projectId")
     suspend fun documentCount(projectId: Long): Int
 
