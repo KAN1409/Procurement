@@ -12,6 +12,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 class EmbeddingProviderFactory(private val context: Context) {
@@ -29,7 +30,7 @@ class EmbeddingProviderFactory(private val context: Context) {
      */
     private fun string(key: String): String? =
         prefs.getString(key, null as String?)?.takeIf { it.isNotEmpty() }
-
+    
     fun getConfig(): EmbeddingConfig {
         val providerType = EmbeddingConfig.ProviderType.valueOf(
             string("provider_type") ?: EmbeddingConfig.ProviderType.OLLAMA.name
@@ -65,7 +66,7 @@ class EmbeddingProviderFactory(private val context: Context) {
         return when (config.providerType) {
             EmbeddingConfig.ProviderType.OLLAMA -> OllamaEmbeddingProvider(config)
             EmbeddingConfig.ProviderType.OPENAI_COMPATIBLE -> OpenAiCompatibleEmbeddingProvider(config)
-            EmbeddingConfig.ProviderType.LOCAL -> LocalEmbeddingProvider(config)
+            EmbeddingConfig.ProviderType.LOCAL -> OnDeviceEmbeddingProvider(context, File(context.filesDir, "models/${config.modelName}"), config)
         }
     }
 }
@@ -93,7 +94,7 @@ class OpenAiCompatibleEmbeddingProvider(
             
             val request = Request.Builder()
                 .url("$baseUrl/embeddings")
-                .addHeader("Authorization", "Bearer ${config.apiKey}")
+                .addHeader("Authorization", "Bearer ${config.apiKey ?: ""}")
                 .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
                 .build()
             
@@ -127,7 +128,7 @@ class OpenAiCompatibleEmbeddingProvider(
             
             val request = Request.Builder()
                 .url("$baseUrl/embeddings")
-                .addHeader("Authorization", "Bearer ${config.apiKey}")
+                .addHeader("Authorization", "Bearer ${config.apiKey ?: ""}")
                 .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
                 .build()
             

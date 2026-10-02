@@ -16,3 +16,10 @@ apk/
 # Runtime-verification fixtures are generated, not hand-maintained binaries
 app/src/test/resources/fixtures/WK_*.pdf
 app/src/test/resources/fixtures/WK_*.xlsx
+
+# Stray on-device model copy from the OpenWhispr app; the real model is
+# deployed into the app sandbox at runtime, not vendored in the repo.
+app/files/
+
+# Local build helper wrapper
+/aapt2-wrapper.sh

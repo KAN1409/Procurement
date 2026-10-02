@@ -6,15 +6,16 @@ plugins {
 }
 
 android {
-    namespace = "com.edib.openwhispr"
+    namespace = "com.edib.procurement"
     compileSdk = 35
+    buildToolsVersion = "36.1.0"
 
     signingConfigs {
         getByName("debug") {
             // Checked-in debug key so every build (local or CI) signs with the
-            // same certificate. Without this, each machine/CI run generates
-            // its own throwaway debug key, and Android refuses to install an
-            // "update" whose signature doesn't match what's already there.
+            // same certificate. Without this, each machine generates its own
+            // throwaway key and Android refuses to install an "update" whose
+            // signature does not match.
             storeFile = file("../keystore/debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
@@ -23,28 +24,27 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.edib.openwhispr"
+        applicationId = "com.edib.procurement"
         minSdk = 30
         targetSdk = 35
-        // v3.15.1: Local transcription no longer falls back to the cloud
-        // provider; model activation requires an explicit action; interface
-        // glyphs replaced with vector icons; light-mode polish.
-        // Transcription behaviour itself is unchanged from v3.14.0.
-        versionCode = 31
-        versionName = "3.15.1"
+        versionCode = 1
+        versionName = "1.0"
 
-        ndk { abiFilters += "arm64-v8a" }
-        
-        // Hilt
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
         javaCompileOptions {
             annotationProcessorOptions {
-                arguments += mapOf("room.schemaLocation" to "$projectDir/schemas".toString())
+                arguments += mapOf("room.schemaLocation" to "$projectDir/schemas")
             }
         }
     }
 
     buildTypes {
         debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
+        release {
+            isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("debug")
         }
     }
@@ -58,86 +58,87 @@ android {
     kotlinOptions { jvmTarget = "17" }
 
     testOptions { unitTests { isIncludeAndroidResources = true } }
-    
+
     packaging {
         resources {
             excludes += listOf("META-INF/AL2.0", "META-INF/LICENSE", "META-INF/NOTICE")
         }
-        jniLibs {
-            useLegacyPackaging = true
-        }
+        // PDFBox pulls in BouncyCastle for encrypted-PDF support: 8.3 MB of
+        // post-quantum tables for a feature a procurement library never uses.
+        // The pack only needs to read text out of ordinary documents, and an
+        // encrypted PDF is reported as an extraction error instead.
+        exclude("org/bouncycastle/**")
+    }
+
+    sourceSets {
+        getByName("main").java.srcDirs("src/main/kotlin")
+        getByName("test").java.srcDirs("src/test/kotlin")
     }
 }
 
 dependencies {
-    implementation(files("libs/sherpa-onnx-1.13.8.aar"))
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Procurement Library dependencies only.
+    //
+    // The application is fully offline and document-control oriented: it needs
+    // a database, coroutines, Compose and SAF. It deliberately does NOT carry
+    // speech recognition, ONNX Runtime, Apache POI, PDFBox, BouncyCastle, the
+    // AppCompat/Material view system, or any cloud client, because none of them
+    // is reachable from any code path here. The original host application's code
+    // and dependencies live in the ":legacy" module, which is built for
+    // continuity but not shipped.
     implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("com.google.android.material:material:1.14.0")
-    implementation("org.apache.commons:commons-compress:1.27.1")
 
-    // Room
     val room_version = "2.6.1"
     implementation("androidx.room:room-runtime:$room_version")
     implementation("androidx.room:room-ktx:$room_version")
     kapt("androidx.room:room-compiler:$room_version")
-    
-    // Coroutines
+
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
-    
-    // WorkManager
-    val work_version = "2.9.0"
-    implementation("androidx.work:work-runtime-ktx:$work_version")
-    
-    // PDF text extraction. Android port of Apache PDFBox; coordinates are
-    // com.tom-roush (not org.apache.pdfbox) and it needs PDFBoxResourceLoader.init.
-    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
-    
-    // Excel parsing - Apache POI (try with offline-first approach)
-    implementation("org.apache.poi:poi:5.2.3")
-    implementation("org.apache.poi:poi-ooxml:5.2.3")
-    implementation("org.apache.poi:poi-ooxml-lite:5.2.3")
-    
-    // JSON
-    implementation("com.google.code.gson:gson:2.11.0")
-    
-    // Navigation Compose
+
     implementation("androidx.navigation:navigation-compose:2.8.5")
-    
-    // Coil for images
-    implementation("io.coil-kt:coil-compose:2.6.0")
     implementation("androidx.compose.material:material-icons-core:1.7.2")
-    
-    // Material 3
+
+    // Paging 3: every long list in the app is a database-backed Pager, so the
+    // UI never holds the whole 3,600-group / 5,900-entry table in memory and a
+    // search still queries the full database rather than a loaded page.
+    implementation("androidx.paging:paging-runtime-ktx:3.3.2")
+    implementation("androidx.paging:paging-compose:3.3.2")
+    implementation("androidx.room:room-paging:$room_version")
+
+    // PDF text extraction for the AI Pack.
+    //
+    // This is the one heavy library the cleanup removed and Phase 3 puts back,
+    // deliberately. Extracting PDF text correctly needs font metrics, CID
+    // decoding, ToUnicode CMap handling and content-stream interpretation;
+    // anything hand-rolled would emit garbled Arabic, which is worse than
+    // emitting nothing. Android's own PdfRenderer cannot help: it rasterises a
+    // page to a bitmap and never exposes text, and the pack must not render.
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+
+    // Explicit versions rather than a BOM: these are the exact artifacts already
+    // present in the local Gradle cache, which keeps offline builds working.
+    // Compose tooling (ui-tooling / ui-tooling-preview) is omitted on purpose:
+    // it is a design-time preview aid only and adds nothing to the app.
+    implementation("androidx.compose.ui:ui:1.7.2")
+    implementation("androidx.compose.ui:ui-graphics:1.7.2")
+    implementation("androidx.compose.foundation:foundation:1.7.2")
     implementation("androidx.compose.material3:material3:1.3.1")
-    implementation("androidx.compose.material3:material3-window-size-class:1.3.1")
-    
-    // Activity Compose
-    implementation("androidx.activity:activity-compose:1.9.3")
-    
-    // ViewModel Compose
+
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
-    
-    // Security
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
-    
+    implementation("androidx.activity:activity-compose:1.9.3")
+
+    // Test-only. The procurement unit tests are plain JVM: grouping,
+    // normalisation, matching and formatting. No Android runtime, no mocking
+    // framework and no Arch test rules are needed.
     testImplementation("junit:junit:4.13.2")
+    // The real org.json, so manifest compatibility is asserted by parsing the
+    // output rather than by string matching. The android.jar stub throws instead.
     testImplementation("org.json:json:20240303")
-    testImplementation("androidx.arch.core:core-testing:2.2.0")
-    testImplementation("org.mockito:mockito-core:5.14.1")
-    testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
-
-    // Test-only: the plain (non-Android) PDFBox ships its glyph and CMap tables
-    // as ordinary classpath resources, so PDF page extraction can be exercised
-    // on the JVM. Production code uses the Android artifact and initialises
-    // PDFBoxResourceLoader explicitly.
-    testImplementation("org.apache.pdfbox:pdfbox:2.0.31")
-
-    // Test-only: a real SQLite JDBC driver so the migration SQL can be executed
-    // and asserted in a plain JVM test. Room's migration runner is not
-    // reachable without an Android runtime, which is how a malformed FTS
-    // option previously reached production.
     testImplementation("org.xerial:sqlite-jdbc:3.45.3.0")
+
+    androidTestImplementation("androidx.test:core:1.5.0")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test:runner:1.5.2")
+    androidTestImplementation("androidx.test:rules:1.5.0")
 }

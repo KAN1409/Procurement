@@ -1,7 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Matches UpdateChecker.downloadApk's File(context.cacheDir, "updates") -->
-    <cache-path name="updates" path="updates/" />
-    <!-- Matches NotesRepository File(context.filesDir, "notes") -->
-    <files-path name="notes" path="notes/" />
+<paths>
+    <!--
+      Generated AI packs live in filesDir/aipacks so they survive a restart and
+      can be listed in the pack history. They are shared read-only through this
+      provider.
+
+      Original documents are never copied here: they are opened through their own
+      SAF URIs with a temporary read grant, so nothing is duplicated and no
+      source file is ever written to.
+    -->
+    <files-path
+        name="aipacks"
+        path="aipacks/" />
+    <cache-path
+        name="shared"
+        path="shared/" />
 </paths>
