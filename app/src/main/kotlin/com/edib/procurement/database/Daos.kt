@@ -109,6 +109,30 @@ data class ContractorWithCount(
     val unresolvedCount: Int
 )
 
+/** Everything the Contractor Detail screen shows about one contractor. */
+data class ContractorDetail(
+    val id: Long,
+    val canonicalName: String,
+    val normalizedName: String,
+    val entryCount: Int,
+    val groupCount: Int,
+    val projectCount: Int,
+    val aliasCount: Int,
+    val documentCount: Int,
+    val isUserCreated: Boolean
+)
+
+/** Everything the Project Detail screen shows about one project. */
+data class ProjectDetail(
+    val id: Long,
+    val canonicalName: String,
+    val normalizedName: String,
+    val groupCount: Int,
+    val entryCount: Int,
+    val documentCount: Int,
+    val contractorCount: Int
+)
+
 data class HomeCounts(
     val projects: Int,
     val groups: Int,
@@ -740,6 +764,139 @@ interface FollowUpDao {
         """
     )
     fun contractorsPagingSource(query: String): PagingSource<Int, ContractorWithCount>
+
+    /**
+     * One contractor with the totals the detail screen needs.
+     *
+     * Every count is scoped to groups of the CURRENT import, so a contractor
+     * whose groups were all superseded reports zero rather than a stale total.
+     */
+    @Query(
+        """
+        SELECT c.id AS id, c.canonicalName AS canonicalName, c.normalizedName AS normalizedName,
+               (SELECT COUNT(*) FROM followup_entry e
+                  WHERE (e.canonicalContractorId = c.id OR e.manualContractorId = c.id)
+                    AND EXISTS (SELECT 1 FROM followup_group g
+                                WHERE g.id = e.groupId AND g.isPresentInCurrentImport = 1)
+               ) AS entryCount,
+               (SELECT COUNT(DISTINCT e.groupId) FROM followup_entry e
+                  WHERE (e.canonicalContractorId = c.id OR e.manualContractorId = c.id)
+                    AND EXISTS (SELECT 1 FROM followup_group g
+                                WHERE g.id = e.groupId AND g.isPresentInCurrentImport = 1)
+               ) AS groupCount,
+               (SELECT COUNT(DISTINCT g.projectId) FROM followup_entry e
+                  JOIN followup_group g ON g.id = e.groupId
+                  WHERE (e.canonicalContractorId = c.id OR e.manualContractorId = c.id)
+                    AND g.isPresentInCurrentImport = 1
+               ) AS projectCount,
+               (SELECT COUNT(*) FROM contractor_alias a WHERE a.contractorId = c.id) AS aliasCount,
+               (SELECT COUNT(DISTINCT l.documentId) FROM document_link l
+                  WHERE l.entryId IN (SELECT e.id FROM followup_entry e
+                        WHERE e.canonicalContractorId = c.id OR e.manualContractorId = c.id)
+                     OR l.groupId IN (SELECT e.groupId FROM followup_entry e
+                        WHERE e.canonicalContractorId = c.id OR e.manualContractorId = c.id)
+               ) AS documentCount,
+               c.isUserCreated AS isUserCreated
+        FROM contractor c
+        WHERE c.id = :id
+        """
+    )
+    suspend fun contractorDetail(id: Long): ContractorDetail?
+
+    /** One project with the totals the detail screen needs. */
+    @Query(
+        """
+        SELECT p.id AS id, p.canonicalName AS canonicalName, p.normalizedName AS normalizedName,
+               (SELECT COUNT(*) FROM followup_group g
+                  WHERE g.projectId = p.id AND g.isPresentInCurrentImport = 1) AS groupCount,
+               (SELECT COUNT(*) FROM followup_entry e
+                  JOIN followup_group g ON g.id = e.groupId
+                  WHERE g.projectId = p.id AND g.isPresentInCurrentImport = 1) AS entryCount,
+               (SELECT COUNT(DISTINCT l.documentId) FROM document_link l
+                  WHERE l.groupId IN (SELECT g.id FROM followup_group g WHERE g.projectId = p.id)
+                     OR l.entryId IN (SELECT e.id FROM followup_entry e
+                           JOIN followup_group g2 ON g2.id = e.groupId WHERE g2.projectId = p.id)
+               ) AS documentCount,
+               (SELECT COUNT(DISTINCT e.canonicalContractorId) FROM followup_entry e
+                  JOIN followup_group g ON g.id = e.groupId
+                  WHERE g.projectId = p.id AND g.isPresentInCurrentImport = 1
+                    AND e.canonicalContractorId IS NOT NULL) AS contractorCount
+        FROM project p
+        WHERE p.id = :id
+        """
+    )
+    suspend fun projectDetail(id: Long): ProjectDetail?
+
+    /**
+     * Groups of a project, paged, for the Project Detail list.
+     *
+     * Distinct from the pack-building read: this one is for the reader, so it
+     * is a normal Paging source rather than a full walk.
+     */
+    @Query(
+        """
+        SELECT g.id AS id, g.stableKey AS stableKey, g.rootCodeRaw AS rootCodeRaw,
+               g.rootCodeNormalized AS rootCodeNormalized, g.projectRaw AS projectRaw,
+               g.area AS area, g.relatedTo AS relatedTo, g.notes AS notes,
+               g.userTags AS userTags, g.isFavorite AS isFavorite, g.prDate AS prDate,
+               g.originalExcelRow AS originalExcelRow,
+               g.isPresentInCurrentImport AS isPresentInCurrentImport,
+               (SELECT COUNT(*) FROM followup_entry e WHERE e.groupId = g.id) AS entryCount,
+               (SELECT COUNT(DISTINCT l.documentId) FROM document_link l
+                  WHERE l.groupId = g.id OR l.entryId IN
+                        (SELECT id FROM followup_entry WHERE groupId = g.id)
+               ) AS documentCount
+        FROM followup_group g
+        WHERE g.projectId = :projectId
+          AND g.isPresentInCurrentImport = 1
+          AND (:query = '' OR g.rootCodeNormalized LIKE '%' || :query || '%'
+               OR g.projectRaw LIKE '%' || :query || '%' OR g.area LIKE '%' || :query || '%'
+               OR g.relatedTo LIKE '%' || :query || '%' OR g.notes LIKE '%' || :query || '%')
+        ORDER BY g.id ASC
+        """
+    )
+    fun groupsOfProjectPagingSource(projectId: Long, query: String): PagingSource<Int, GroupListRow>
+
+    /**
+     * Ids of every group the query matches, current import only.
+     *
+     * Used by "select all results". It projects the primary key alone so the
+     * selection can cover thousands of rows without loading thousands of Room
+     * entities, and it applies exactly the filter the visible list uses.
+     */
+    @Query(
+        """
+        SELECT g.id FROM followup_group g
+        WHERE g.isPresentInCurrentImport = 1
+          AND (:query = '' OR
+               g.rootCodeNormalized LIKE '%' || :query || '%' OR
+               g.projectRaw LIKE '%' || :query || '%' OR
+               g.area LIKE '%' || :query || '%' OR
+               g.relatedTo LIKE '%' || :query || '%' OR
+               g.notes LIKE '%' || :query || '%' OR
+               EXISTS (SELECT 1 FROM followup_entry e2 WHERE e2.groupId = g.id AND
+                 (e2.codeNormalized LIKE '%' || :query || '%' OR
+                  e2.matchCodeKey LIKE '%' || :query || '%' OR
+                  e2.description LIKE '%' || :query || '%' OR
+                  e2.companyRaw LIKE '%' || :query || '%' OR
+                  e2.prPathRaw LIKE '%' || :query || '%' OR
+                  e2.orderPathRaw LIKE '%' || :query || '%')))
+        ORDER BY g.id ASC
+        """
+    )
+    suspend fun allGroupIds(query: String): List<Long>
+
+    /** Ids of every document the query matches. Same reasoning as [allGroupIds]. */
+    @Query(
+        """
+        SELECT d.id FROM document d
+        WHERE d.isMissing = 0
+          AND (:query = '' OR d.normalizedName LIKE '%' || :query || '%'
+               OR d.relativePath LIKE '%' || :query || '%')
+        ORDER BY d.id ASC
+        """
+    )
+    suspend fun allDocumentIds(query: String): List<Long>
 
     /** Paging source for the "Link to…" entry picker. */
     @Query(

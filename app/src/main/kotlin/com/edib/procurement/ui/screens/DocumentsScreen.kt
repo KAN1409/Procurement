@@ -1,6 +1,7 @@
 package com.edib.procurement.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -37,20 +38,26 @@ import com.edib.procurement.ui.ProcurementViewModel
 import com.edib.procurement.ui.components.Chip
 import com.edib.procurement.ui.components.EmptyState
 import com.edib.procurement.ui.components.SectionLabel
+import com.edib.procurement.ui.components.SelectionActionBar
+import com.edib.procurement.ui.SelectScope
 import com.edib.procurement.ui.components.formatSize
 import com.edib.procurement.ui.theme.ProcurementColors
 
 /** DOCUMENTS: the indexed repository, opened externally. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun DocumentsScreen(
     vm: ProcurementViewModel,
     onPickFolder: () -> Unit,
-    onRescanFolder: () -> Unit
+    onRescanFolder: () -> Unit,
+    onOpenPack: () -> Unit = {}
 ) {
     val query by vm.query.collectAsStateWithLifecycle()
     // Paged against Room: scrolling appends, and a new search term cancels the
     // previous query rather than filtering what happens to be loaded.
     val documents = vm.documentPages.collectAsLazyPagingItems()
+    val selection by vm.selectState.collectAsStateWithLifecycle()
+    val selectionActive = selection.inMode
     val config by vm.config.collectAsStateWithLifecycle()
     val counts by vm.counts.collectAsStateWithLifecycle()
 
@@ -62,11 +69,23 @@ fun DocumentsScreen(
         ScreenHeader("Documents", "${counts?.documents ?: 0} indexed")
         SearchField(
             value = query,
-            onValueChange = vm::setQuery,
+            onValueChange = { vm.setQuery(it); vm.syncSelectionQuery() },
             placeholder = "Search file name or relative path…",
             modifier = Modifier.padding(horizontal = 14.dp)
         )
         Spacer(Modifier.height(8.dp))
+        if (selectionActive) {
+            SelectionActionBar(
+                selectedCount = selection.count,
+                noun = "files",
+                onCreatePack = {
+                    vm.openPackRequest(vm.requestForSelection())
+                    onOpenPack()
+                },
+                onSelectAll = { vm.selectAllResults { } },
+                onClear = { vm.clearSelection() }
+            )
+        }
 
         if (config.treeUri == null) {
             Row(
@@ -87,6 +106,16 @@ fun DocumentsScreen(
             ) {
                 OutlinedButton(onClick = onRescanFolder) { Text("Rescan") }
                 TextButton(onClick = onPickFolder) { Text("Change folder") }
+                Spacer(Modifier.weight(1f))
+                // Long press also starts selection, but an explicit control
+                // keeps the feature reachable without a hidden gesture.
+                TextButton(onClick = { vm.beginSelection(SelectScope.DOCUMENTS) }) {
+                    Text(
+                        "SELECT",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = ProcurementColors.AccentRedBright
+                    )
+                }
             }
             Spacer(Modifier.height(6.dp))
         }
@@ -97,7 +126,40 @@ fun DocumentsScreen(
         ) {
             items(documents.itemCount, key = { i -> documents.peek(i)?.id ?: i.toLong() }) { i ->
                 val doc = documents[i] ?: return@items
-                DocumentRow(doc) { vm.openDocument(doc.documentUri, doc.extension, doc.mimeType) }
+                val picked = doc.id in selection.effectiveIds
+                Column(
+                    Modifier
+                        .then(
+                            if (picked) Modifier.background(
+                                ProcurementColors.AccentRed.copy(alpha = 0.16f)
+                            ) else Modifier
+                        )
+                        .combinedClickable(
+                            onClick = {
+                                if (selectionActive) vm.toggleSelection(doc.id)
+                                else vm.openDocument(doc.documentUri, doc.extension, doc.mimeType)
+                            },
+                            onLongClick = {
+                                if (!selectionActive) vm.beginSelection(SelectScope.DOCUMENTS)
+                                vm.toggleSelection(doc.id)
+                            }
+                        )
+                ) {
+                    DocumentRow(doc) {
+                        if (selectionActive) vm.toggleSelection(doc.id)
+                        else vm.openDocument(doc.documentUri, doc.extension, doc.mimeType)
+                    }
+                    // An unlinked file is exported as-is. The pack must never
+                    // invent Follow-up context for it, so the row says so.
+                    if (picked) {
+                        Text(
+                            if (doc.linkCount > 0) "SELECTED · LINKED"
+                            else "SELECTED · UNLINKED · Selection: MANUAL",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = ProcurementColors.AccentRedBright
+                        )
+                    }
+                }
             }
             if (documents.loadState.append is androidx.paging.LoadState.Loading) {
                 item { PagingSpinner() }
@@ -260,7 +322,10 @@ private fun UnlinkedRow(doc: UnlinkedDocumentRow) {
 
 /** CONTRACTORS: resolved suppliers plus the unresolved raw names to map. */
 @Composable
-fun ContractorsScreen(vm: ProcurementViewModel) {
+fun ContractorsScreen(
+    vm: ProcurementViewModel,
+    onOpenContractor: (Long) -> Unit = {}
+) {
     val contractors by vm.contractors.collectAsStateWithLifecycle()
     val unresolved by vm.unresolvedContractors.collectAsStateWithLifecycle()
     val aliasCount by vm.contractorAliasCount.collectAsStateWithLifecycle()
@@ -324,7 +389,10 @@ fun ContractorsScreen(vm: ProcurementViewModel) {
                     item { SectionLabel("Resolved from SUPPLIER LIST") }
                     items(contractors, key = { it.id }) { c ->
                         Row(
-                            Modifier.fillMaxWidth().padding(vertical = 9.dp),
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { onOpenContractor(c.id) }
+                                .padding(vertical = 9.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
@@ -354,10 +422,17 @@ fun ContractorsScreen(vm: ProcurementViewModel) {
 }
 
 /** FOLLOW-UP: every group across every project, filtered by the search box. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun FollowUpScreen(vm: ProcurementViewModel, onOpenGroup: (Long) -> Unit) {
+fun FollowUpScreen(
+    vm: ProcurementViewModel,
+    onOpenGroup: (Long) -> Unit,
+    onOpenPack: () -> Unit = {}
+) {
     val query by vm.query.collectAsStateWithLifecycle()
     val groups = vm.groupPages.collectAsLazyPagingItems()
+    val selection by vm.selectState.collectAsStateWithLifecycle()
+    val selectionActive = selection.inMode
     val config by vm.config.collectAsStateWithLifecycle()
     val groupTotal by vm.groupCount.collectAsStateWithLifecycle()
 
@@ -369,10 +444,32 @@ fun FollowUpScreen(vm: ProcurementViewModel, onOpenGroup: (Long) -> Unit) {
             .fillMaxSize()
             .background(ProcurementColors.Graphite900)
     ) {
-        ScreenHeader(
-            "Follow-up",
-            if (workbookImported) "${groupTotal} groups" else "no workbook"
-        )
+        ScreenHeader("Follow-up", if (workbookImported) "${groupTotal} groups" else "no workbook")
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = { vm.beginSelection(SelectScope.GROUPS) }) {
+                Text(
+                    "SELECT GROUPS",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = ProcurementColors.AccentRedBright
+                )
+            }
+        }
+        if (selectionActive) {
+            SelectionActionBar(
+                selectedCount = selection.count,
+                noun = "groups",
+                onCreatePack = {
+                    vm.openPackRequest(vm.requestForSelection())
+                    onOpenPack()
+                },
+                onSelectAll = { vm.selectAllResults { } },
+                onClear = { vm.clearSelection() }
+            )
+        }
 
         when {
             !workbookImported -> {
@@ -397,7 +494,7 @@ fun FollowUpScreen(vm: ProcurementViewModel, onOpenGroup: (Long) -> Unit) {
             else -> {
                 SearchField(
                     value = query,
-                    onValueChange = vm::setQuery,
+                    onValueChange = { vm.setQuery(it); vm.syncSelectionQuery() },
                     placeholder = "Search code, project, area, contractor, notes…",
                     modifier = Modifier.padding(horizontal = 14.dp)
                 )
@@ -411,7 +508,25 @@ fun FollowUpScreen(vm: ProcurementViewModel, onOpenGroup: (Long) -> Unit) {
                         key = { i -> groups.peek(i)?.id ?: i.toLong() }
                     ) { i ->
                         val g = groups[i] ?: return@items
-                        Column {
+                        val picked = g.id in selection.effectiveIds
+                        Column(
+                            Modifier
+                                .then(
+                                    if (picked) Modifier.background(
+                                        ProcurementColors.AccentRed.copy(alpha = 0.16f)
+                                    ) else Modifier
+                                )
+                                .combinedClickable(
+                                    onClick = {
+                                        if (selectionActive) vm.toggleSelection(g.id)
+                                        else onOpenGroup(g.id)
+                                    },
+                                    onLongClick = {
+                                        if (!selectionActive) vm.beginSelection(SelectScope.GROUPS)
+                                        vm.toggleSelection(g.id)
+                                    }
+                                )
+                        ) {
                             Text(
                                 g.projectRaw ?: "(no project)",
                                 style = MaterialTheme.typography.labelSmall,
@@ -419,6 +534,14 @@ fun FollowUpScreen(vm: ProcurementViewModel, onOpenGroup: (Long) -> Unit) {
                             )
                             Spacer(Modifier.height(2.dp))
                             GroupRow(g) { onOpenGroup(g.id) }
+                            if (picked) {
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    "SELECTED",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = ProcurementColors.AccentRedBright
+                                )
+                            }
                         }
                         Spacer(Modifier.height(6.dp))
                     }

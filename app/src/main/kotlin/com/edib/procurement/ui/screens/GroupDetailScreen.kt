@@ -145,7 +145,12 @@ fun GroupDetailScreen(
                     Spacer(Modifier.width(10.dp))
                     TextButton(
                         onClick = {
-                            vm.buildGroupPackScope(groupId)
+                            vm.openPackRequest(
+                                com.edib.procurement.aipack.AiPackRequest.group(
+                                    groupId,
+                                    group?.rootCodeRaw ?: "Group"
+                                )
+                            )
                             onOpenPack()
                         }
                     ) {

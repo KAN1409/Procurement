@@ -122,6 +122,7 @@ fun AiPackScreen(vm: ProcurementViewModel, onClose: () -> Unit) {
                 if (showConfig) {
                     ConfigurationSheet(
                         scopeName = scope?.name ?: "",
+                        scopeType = scope?.type?.name ?: "-",
                         previewGroups = preview?.groups ?: 0,
                         previewEntries = preview?.entries ?: 0,
                         previewDocuments = preview?.documents ?: 0,
@@ -169,6 +170,7 @@ fun AiPackScreen(vm: ProcurementViewModel, onClose: () -> Unit) {
 @Composable
 private fun ConfigurationSheet(
     scopeName: String,
+    scopeType: String,
     previewGroups: Int,
     previewEntries: Int,
     previewDocuments: Int,
@@ -194,7 +196,12 @@ private fun ConfigurationSheet(
         Panel {
             SectionLabel("Create AI Pack")
             Text(
-                "Scope: $scopeName",
+                "Scope: $scopeType",
+                style = MaterialTheme.typography.labelMedium,
+                color = ProcurementColors.AccentRedBright
+            )
+            Text(
+                scopeName,
                 style = MaterialTheme.typography.titleSmall,
                 color = ProcurementColors.TextPrimary
             )

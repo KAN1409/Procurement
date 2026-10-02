@@ -62,9 +62,11 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.edib.procurement.ui.screens.AiPackHistoryScreen
 import com.edib.procurement.ui.screens.AiPackScreen
+import com.edib.procurement.ui.screens.ContractorDetailScreen
 import com.edib.procurement.ui.screens.ContractorsScreen
 import com.edib.procurement.ui.screens.DocumentsScreen
 import com.edib.procurement.ui.screens.FollowUpScreen
+import com.edib.procurement.ui.screens.ProjectDetailScreen
 import com.edib.procurement.ui.screens.GroupDetailScreen
 import com.edib.procurement.ui.screens.HomeScreen
 import com.edib.procurement.ui.screens.NeedsReviewScreen
@@ -222,19 +224,33 @@ fun ProcurementApp() {
                     )
                 }
                 composable(Tab.PROJECTS.route) {
-                    ProjectsScreen(vm = vm, onOpenGroup = { nav.toGroup(it) })
+                    ProjectsScreen(
+                        vm = vm,
+                        onOpenGroup = { nav.toGroup(it) },
+                        onOpenProject = { nav.navigate("project/$it") }
+                    )
                 }
                 composable(Tab.FOLLOW_UP.route) {
-                    FollowUpScreen(vm = vm, onOpenGroup = { nav.toGroup(it) })
+                    FollowUpScreen(
+                        vm = vm,
+                        onOpenGroup = { nav.toGroup(it) },
+                        onOpenPack = { nav.openPack() }
+                    )
                 }
                 composable(Tab.FILES.route) {
                     DocumentsScreen(
                         vm = vm,
                         onPickFolder = openFolder,
-                        onRescanFolder = { vm.rescanDocumentTree() }
+                        onRescanFolder = { vm.rescanDocumentTree() },
+                        onOpenPack = { nav.openPack() }
                     )
                 }
-                composable(MoreTab.CONTRACTORS.route) { ContractorsScreen(vm = vm) }
+                composable(MoreTab.CONTRACTORS.route) {
+                    ContractorsScreen(
+                        vm = vm,
+                        onOpenContractor = { nav.navigate("contractor/$it") }
+                    )
+                }
                 composable(MoreTab.NEEDS_REVIEW.route) { NeedsReviewScreen(vm = vm) }
                 composable(MoreTab.AI_PACKS.route) { AiPackHistoryScreen(vm = vm) }
                 composable(MoreTab.SETTINGS.route) {
@@ -245,6 +261,31 @@ SettingsScreen(
         onRescanFolder = { vm.rescanDocumentTree() },
         onRunMatching = { vm.runMatching() }
     )
+                }
+                composable(
+                    route = "project/{id}",
+                    arguments = listOf(navArgument("id") { type = NavType.LongType })
+                ) { entry ->
+                    val id = entry.arguments?.getLong("id") ?: return@composable
+                    ProjectDetailScreen(
+                        vm = vm,
+                        projectId = id,
+                        onBack = { nav.popBackStack() },
+                        onOpenGroup = { nav.toGroup(it) },
+                        onOpenPack = { nav.openPack() }
+                    )
+                }
+                composable(
+                    route = "contractor/{id}",
+                    arguments = listOf(navArgument("id") { type = NavType.LongType })
+                ) { entry ->
+                    val id = entry.arguments?.getLong("id") ?: return@composable
+                    ContractorDetailScreen(
+                        vm = vm,
+                        contractorId = id,
+                        onBack = { nav.popBackStack() },
+                        onOpenPack = { nav.openPack() }
+                    )
                 }
                 composable(
                     route = "group/{id}",
@@ -335,6 +376,21 @@ private fun androidx.navigation.NavHostController.toTab(route: String) {
 
 private fun androidx.navigation.NavHostController.toGroup(id: Long) {
     navigate("group/$id")
+}
+
+/**
+ * Opens the shared AI Pack configuration screen.
+ *
+ * The config screen is popped first so re-opening it from another screen always
+ * rebuilds it. [launchSingleTop] on its own is wrong here: if a previous pack
+ * entry is still on the stack, navigating again would be swallowed and the new
+ * scope would never be shown. Popping first also keeps the back stack shallow,
+ * so Back returns to the screen the user actually came from, with no duplicate
+ * config screens stacked up behind it.
+ */
+private fun androidx.navigation.NavHostController.openPack() {
+    popBackStack(Tab.AI_PACK_ROUTE, inclusive = true)
+    navigate(Tab.AI_PACK_ROUTE)
 }
 
 /**

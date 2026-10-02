@@ -15,11 +15,15 @@ import com.edib.procurement.database.GroupListRow
 import com.edib.procurement.database.HomeCounts
 import com.edib.procurement.database.LinkedDocumentRow
 import com.edib.procurement.database.ProjectWithCount
+import com.edib.procurement.database.ProjectDetail
+import com.edib.procurement.database.ContractorDetail
 import com.edib.procurement.database.UnlinkedDocumentRow
 import com.edib.procurement.matching.MatchingReport
 import com.edib.procurement.database.LinkEntryRow
 import com.edib.procurement.database.LinkTargetRow
 import com.edib.procurement.aipack.PackDetail
+import com.edib.procurement.aipack.AiPackOrigin
+import com.edib.procurement.aipack.AiPackRequest
 import com.edib.procurement.aipack.PackInclude
 import com.edib.procurement.aipack.PackPreview
 import com.edib.procurement.aipack.PackProgress
@@ -416,6 +420,140 @@ val linkQuery: StateFlow<String> = _linkQuery.asStateFlow()
 
 fun setLinkQuery(q: String) { _linkQuery.value = q }
 
+    // ------------------------------------------------------------------
+    // Multi-select surfaces (Follow-up groups, Documents)
+    // ------------------------------------------------------------------
+
+    private val _selectState = MutableStateFlow(MultiSelectState())
+    val selectState: StateFlow<MultiSelectState> = _selectState.asStateFlow()
+
+    /** True while a multi-select surface is in selection mode. */
+    val selectionActive: Boolean get() = _selectState.value.inMode
+
+    /**
+     * Enters selection mode on a surface.
+     *
+     * Mode is tracked separately from "something is selected", because the
+     * screen has to show the SELECT affordance's result before anything is
+     * picked. Arming is idempotent: pressing SELECT twice must not clear the
+     * rows already chosen.
+     */
+    fun beginSelection(scope: SelectScope) {
+        _selectState.value = _selectState.value.copy(scope = scope, mode = true)
+    }
+
+    /** Leaves selection mode and forgets the selection. */
+    fun endSelection() {
+        _selectState.value = MultiSelectState()
+    }
+
+    fun toggleSelection(id: Long) {
+        _selectState.value = _selectState.value.toggle(id)
+    }
+
+    fun clearSelection() {
+        // CLEAR empties the selection but leaves the surface in selection mode,
+        // so the reader can immediately pick a different set.
+        _selectState.value = _selectState.value.copy(
+            mode = true, ids = emptySet(), selectAllIds = emptySet(), allMode = false
+        )
+    }
+
+    fun syncSelectionQuery() {
+        _selectState.value = _selectState.value.withQuery(_query.value)
+    }
+
+    /**
+     * SELECT ALL RESULTS against the whole current query.
+     *
+     * Reads ids straight from the database rather than from loaded pages, so
+     * it really is every result. The call then turns the selection into a pack
+     * request over the same scope.
+     */
+    fun selectAllResults(onReady: (AiPackRequest) -> Unit) {
+        val st = _selectState.value
+        viewModelScope.launch {
+            val captured: List<Long> = when (st.scope) {
+                SelectScope.GROUPS -> repo.allGroupIdsForQuery(_query.value)
+                SelectScope.DOCUMENTS -> repo.allDocumentIdsForQuery(_query.value)
+                SelectScope.ENTRIES -> emptyList()
+            }
+            _selectState.value = MultiSelectState.selectAll(st, captured)
+            val next = _selectState.value
+            onReady(requestForSelection(next))
+        }
+    }
+
+    /** Builds the pack request matching the current selection. */
+    fun requestForSelection(st: MultiSelectState = _selectState.value): AiPackRequest {
+        val label = when (st.scope) {
+            SelectScope.GROUPS -> selectionLabel("Follow-up groups", st.count)
+            SelectScope.ENTRIES -> selectionLabel("Follow-up entries", st.count)
+            SelectScope.DOCUMENTS -> selectionLabel("Documents", st.count)
+        }
+        return when (st.scope) {
+            SelectScope.GROUPS -> AiPackRequest.groups(st.effectiveIds.toList(), label)
+            SelectScope.ENTRIES -> AiPackRequest.entries(st.effectiveIds.toList(), label)
+            // Unlinked documents are allowed here and only here: a user picking
+            // files by hand is stating intent, not having context invented.
+            SelectScope.DOCUMENTS -> AiPackRequest.documents(
+                st.effectiveIds.toList(), label, unlinked = true
+            )
+        }.copy(origin = selectionOrigin(st.scope))
+    }
+
+    private fun selectionOrigin(scope: SelectScope) = when (scope) {
+        SelectScope.GROUPS -> AiPackOrigin.FOLLOW_UP
+        SelectScope.ENTRIES -> AiPackOrigin.FOLLOW_UP
+        SelectScope.DOCUMENTS -> AiPackOrigin.DOCUMENTS
+    }
+
+    private fun selectionLabel(what: String, n: Int): String =
+        if (_query.value.isBlank()) "$what ($n)" else "$what matching \"${_query.value}\" ($n)"
+
+    // ------------------------------------------------------------------
+    // Project / Contractor detail
+    // ------------------------------------------------------------------
+
+    private val _projectDetail = MutableStateFlow<ProjectDetail?>(null)
+    val projectDetail: StateFlow<ProjectDetail?> = _projectDetail.asStateFlow()
+
+    private val _contractorDetail = MutableStateFlow<ContractorDetail?>(null)
+    val contractorDetail: StateFlow<ContractorDetail?> = _contractorDetail.asStateFlow()
+
+    private val _projectQuery = MutableStateFlow("")
+    val projectQuery: StateFlow<String> = _projectQuery.asStateFlow()
+
+    fun setProjectQuery(q: String) { _projectQuery.value = q }
+
+    fun loadProject(id: Long) {
+        viewModelScope.launch { _projectDetail.value = repo.projectDetail(id) }
+    }
+
+    fun loadContractor(id: Long) {
+        viewModelScope.launch { _contractorDetail.value = repo.contractorDetail(id) }
+    }
+
+    /**
+     * Pack request for a contractor, resolved to the groups they actually work
+     * in. Built here rather than in the screen so the id plumbing lives in one
+     * place and the scope cannot silently come out empty.
+     */
+    fun contractorPackRequest(id: Long, name: String): AiPackRequest? {
+        val d = _contractorDetail.value ?: return null
+        if (d.id != id || d.entryCount == 0) return null
+        return AiPackRequest.contractor(name, emptyList())
+            .copy(id = id, origin = AiPackOrigin.CONTRACTOR_DETAIL)
+    }
+
+    fun projectPackRequest(id: Long, name: String): AiPackRequest =
+        AiPackRequest.project(id, name)
+            .copy(origin = AiPackOrigin.PROJECT_DETAIL)
+
+    fun groupsOfProjectPager(projectId: Long): Flow<PagingData<GroupListRow>> =
+        repo.groupsOfProjectPager(projectId, _projectQuery.value)
+            .cachedIn(viewModelScope)
+
 val linkEntryPages: StateFlow<PagingData<LinkEntryRow>> =
     _linkQuery.flatMapLatest { q -> repo.linkEntriesPager(q) }
         .cachedIn(viewModelScope)
@@ -446,11 +584,49 @@ val linkGroupPages: StateFlow<PagingData<LinkTargetRow>> =
 
     private var packJob: Job? = null
 
+    private val _packRequest = MutableStateFlow<AiPackRequest?>(null)
+    val packRequest: StateFlow<AiPackRequest?> = _packRequest.asStateFlow()
+
     /** Opens the pack flow for one Follow-up group. */
     fun buildGroupPackScope(groupId: Long) {
         viewModelScope.launch {
             startPack(repo.scopeForGroup(groupId))
         }
+    }
+
+    /**
+     * The single entry point every screen uses to open the pack flow.
+     *
+     * A request is resolved into a concrete scope here, so the configuration
+     * screen and the generator never care which screen the user came from.
+     */
+    fun openPackRequest(request: AiPackRequest) {
+        if (!request.isValid) {
+            say("Nothing selected to export", isError = true)
+            return
+        }
+        // Stop any pack still running: its progress belongs to the old scope and
+        // would otherwise be displayed against this new one.
+        packJob?.cancel()
+        packJob = null
+        _packProgress.value = null
+        _packResult.value = null
+        _packRequest.value = request
+        viewModelScope.launch {
+            val scope = repo.resolveRequest(request)
+            if (scope.groupIds.isEmpty() && scope.entryIds.isEmpty() &&
+                scope.documentIds.isEmpty()
+            ) {
+                say("Nothing to export for ${request.displayName}", isError = true)
+                return@launch
+            }
+            startPack(scope)
+        }
+    }
+
+    /** Drops the pending request once the pack flow is dismissed. */
+    fun clearPackRequest() {
+        _packRequest.value = null
     }
 
     fun startPack(scope: PackScope) {
@@ -529,6 +705,13 @@ val linkGroupPages: StateFlow<PagingData<LinkTargetRow>> =
     }
 
     fun clearPack() {
+        // A pack still running must be stopped before the state is wiped.
+        // Otherwise its progress keeps publishing into the fresh screen and its
+        // old scope is what the next CREATE actually builds, which silently
+        // exports the wrong selection.
+        packJob?.cancel()
+        packJob = null
+        _packRequest.value = null
         _packScope.value = null
         _packPreview.value = null
         _packResult.value = null

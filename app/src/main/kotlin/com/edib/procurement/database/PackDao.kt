@@ -37,6 +37,24 @@ interface PackDao {
     )
     suspend fun groupIdsForContractor(contractorId: Long): List<Long>
 
+    /**
+     * Entry ids attributed to a contractor.
+     *
+     * A CONTRACTOR pack is pinned to these ids rather than to whole groups: a
+     * group often holds entries from several suppliers, and exporting the whole
+     * group would drag in a different contractor's work. The groups are still
+     * resolved, so each entry keeps its project and group context in the pack,
+     * but only this contractor's entries are written.
+     */
+    @Query(
+        """
+        SELECT id FROM followup_entry
+        WHERE canonicalContractorId = :contractorId OR manualContractorId = :contractorId
+        ORDER BY id ASC
+        """
+    )
+    suspend fun entryIdsForContractor(contractorId: Long): List<Long>
+
     /** Group ids of a project, current import only. */
     @Query(
         """

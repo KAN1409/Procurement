@@ -52,7 +52,8 @@ import com.edib.procurement.ui.theme.ProcurementColors
 @Composable
 fun ProjectsScreen(
     vm: ProcurementViewModel,
-    onOpenGroup: (Long) -> Unit
+    onOpenGroup: (Long) -> Unit,
+    onOpenProject: (Long) -> Unit = {}
 ) {
     val query by vm.query.collectAsStateWithLifecycle()
     val config by vm.config.collectAsStateWithLifecycle()
@@ -95,11 +96,13 @@ fun ProjectsScreen(
             items(projects.itemCount, key = { i -> projects.peek(i)?.id ?: i.toLong() }) { i ->
                 val p = projects[i] ?: return@items
                 PagedProjectRow(
+                    id = p.id,
                     name = p.canonicalName,
                     groups = p.groupCount,
                     documents = p.documentCount,
                     vm = vm,
-                    onOpenGroup = onOpenGroup
+                    onOpenGroup = onOpenGroup,
+                    onOpenProject = onOpenProject
                 )
                 Spacer(Modifier.height(6.dp))
             }
@@ -112,11 +115,13 @@ fun ProjectsScreen(
 
 @Composable
 private fun PagedProjectRow(
+    id: Long,
     name: String,
     groups: Int,
     documents: Int,
     vm: ProcurementViewModel,
-    onOpenGroup: (Long) -> Unit
+    onOpenGroup: (Long) -> Unit,
+    onOpenProject: (Long) -> Unit
 ) {
     var expanded by rememberSaveable(name) { mutableStateOf(false) }
 
@@ -128,11 +133,17 @@ private fun PagedProjectRow(
         Row(
             Modifier
                 .fillMaxWidth()
-                .clickable { expanded = !expanded }
                 .padding(horizontal = 12.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(Modifier.weight(1f)) {
+            Column(
+                Modifier
+                    .weight(1f)
+                    // The name opens Project Detail; the chevron on the right
+                    // still expands the inline group list, so both gestures have
+                    // a distinct, discoverable target.
+                    .clickable { onOpenProject(id) }
+            ) {
                 Text(
                     name,
                     style = MaterialTheme.typography.titleSmall,
@@ -147,7 +158,13 @@ private fun PagedProjectRow(
                 }
             }
             Spacer(Modifier.width(8.dp))
-            Text(if (expanded) "\u25be" else "\u25b8", color = ProcurementColors.TextTertiary)
+            Text(
+                if (expanded) "\u25be" else "\u25b8",
+                color = ProcurementColors.TextTertiary,
+                modifier = Modifier
+                    .clickable { expanded = !expanded }
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            )
         }
 
         if (expanded) {

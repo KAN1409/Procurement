@@ -13,6 +13,8 @@ import com.edib.procurement.database.ContractorAliasEntity
 import com.edib.procurement.database.ContractorDao
 import com.edib.procurement.database.ContractorEntity
 import com.edib.procurement.database.ContractorWithCount
+import com.edib.procurement.database.ContractorDetail
+import com.edib.procurement.database.ProjectDetail
 import com.edib.procurement.database.DocumentDao
 import com.edib.procurement.database.DocumentEntity
 import com.edib.procurement.database.DocumentLinkEntity
@@ -44,6 +46,8 @@ import com.edib.procurement.followup.FollowUpWorkbookImporter
 import com.edib.procurement.followup.ImportReport
 import com.edib.procurement.followup.TextNormalizer
 import com.edib.procurement.aipack.AiPackBuilder
+import com.edib.procurement.aipack.AiPackRequest
+import com.edib.procurement.aipack.ResolvedScope
 import com.edib.procurement.aipack.PackNaming
 import com.edib.procurement.aipack.PackDetail
 import com.edib.procurement.aipack.PackInclude
@@ -678,6 +682,68 @@ suspend fun buildPack(
             groupIds = listOf(groupId)
         )
     }
+
+    /**
+     * Turns a caller's [AiPackRequest] into a concrete [PackScope].
+     *
+     * A PROJECT or CONTRACTOR request names one id and is expanded here into
+     * the groups it owns, so the generator itself only ever deals with explicit
+     * group/entry/document lists.
+     */
+    suspend fun resolveRequest(request: AiPackRequest): PackScope = withContext(Dispatchers.IO) {
+        // A contractor is pinned to its own entries, not to whole groups: the
+        // groups are kept so context survives, but only that contractor's
+        // entries are exported.
+        val contractorEntries =
+            if (request.scopeType == PackScopeType.CONTRACTOR && request.id != null) {
+                packDao.entryIdsForContractor(request.id)
+            } else {
+                emptyList()
+            }
+        val groups = when {
+            request.scopeType == PackScopeType.PROJECT ->
+                request.projectIds.flatMap { packDao.groupIdsOfProject(it) }
+            request.scopeType == PackScopeType.CONTRACTOR ->
+                request.id?.let { packDao.groupIdsForContractor(it) } ?: request.groupIds
+            else -> request.groupIds
+        }.distinct()
+        request.toScope(
+            ResolvedScope(
+                groupIds = groups,
+                entryIds = contractorEntries.ifEmpty { request.entryIds }
+            )
+        )
+    }
+
+    /** Detail rows for the Project / Contractor screens. */
+    suspend fun projectDetail(id: Long): ProjectDetail? = withContext(Dispatchers.IO) {
+        followUpDao.projectDetail(id)
+    }
+
+    suspend fun contractorDetail(id: Long): ContractorDetail? = withContext(Dispatchers.IO) {
+        followUpDao.contractorDetail(id)
+    }
+
+    fun groupsOfProjectPager(projectId: Long, query: String): Flow<PagingData<GroupListRow>> =
+        pager { followUpDao.groupsOfProjectPagingSource(projectId, query.trim()) }
+
+    /**
+     * Ids of every group the current query matches.
+     *
+     * "Select all results" has to mean the whole database result, not the rows
+     * Paging has happened to load, so this runs the same filter as the list and
+     * returns ids only. Reading a projection of the primary key keeps a
+     * multi-thousand-row selection cheap; the full entities are never loaded
+     * just to count what the user picked.
+     */
+    suspend fun allGroupIdsForQuery(query: String): List<Long> = withContext(Dispatchers.IO) {
+        followUpDao.allGroupIds(query.trim())
+    }
+
+    suspend fun allDocumentIdsForQuery(query: String): List<Long> =
+        withContext(Dispatchers.IO) {
+            followUpDao.allDocumentIds(query.trim())
+        }
 
     /**
      * Groups of a project, walked a page at a time.
