@@ -93,6 +93,37 @@ object ExternalDocumentOpener {
      * grant, so the receiving app (ChatGPT, a mail client, anything) can read the
      * file without the app exporting it to shared storage.
      */
+    /**
+     * Share several generated files at once.
+     *
+     * Uses ACTION_SEND_MULTIPLE so one chooser action delivers the index and all
+     * parts together. Targets that only accept a single file will simply ignore
+     * the extra ones, which is why single-file sharing stays available.
+     */
+    fun shareFiles(context: Context, contentUris: List<Uri>, title: String = "Share AI Pack")
+            : OpenResult {
+        if (contentUris.isEmpty()) return OpenResult.NO_FILE
+        val send = Intent(
+            if (contentUris.size == 1) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE
+        ).apply {
+            type = if (contentUris.size == 1) "*/*" else "application/zip"
+            if (contentUris.size == 1) putExtra(Intent.EXTRA_STREAM, contentUris.first())
+            else putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(contentUris))
+            putExtra(Intent.EXTRA_SUBJECT, title)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val chooser = Intent.createChooser(send, title).apply {
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        return try {
+            context.startActivity(chooser)
+            OpenResult.OPENED
+        } catch (t: Throwable) {
+            OpenResult.NO_APP
+        }
+    }
+
     fun shareFile(context: Context, contentUri: Uri, mime: String, title: String): OpenResult {
         val send = Intent(Intent.ACTION_SEND).apply {
             type = mime

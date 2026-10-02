@@ -1,6 +1,20 @@
 package com.edib.procurement.aipack
 
 /**
+ * One byte formatter shared by the pack body, the index and the part headers.
+ *
+ * They must agree: a reader comparing "Normalized Total Size" in the index with
+ * the footer of a part should not see two different formats for the same number.
+ */
+fun formatBytes(bytes: Long): String = when {
+    bytes <= 0 -> "0 B"
+    bytes < 1024 -> "$bytes B"
+    bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+    bytes < 1024L * 1024 * 1024 -> "${"%.1f".format(bytes / 1024.0 / 1024)} MB"
+    else -> "${"%.2f".format(bytes / 1024.0 / 1024 / 1024)} GB"
+}
+
+/**
  * What a pack would contain, shown in the configuration sheet before anything
  * is written. Every number is a database count, not a page size.
  */

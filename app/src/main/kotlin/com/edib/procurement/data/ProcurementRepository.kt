@@ -46,6 +46,13 @@ import com.edib.procurement.followup.FollowUpWorkbookImporter
 import com.edib.procurement.followup.ImportReport
 import com.edib.procurement.followup.TextNormalizer
 import com.edib.procurement.aipack.AiPackBuilder
+import com.edib.procurement.aipack.CorpusValidator
+import com.edib.procurement.aipack.MultipartAiPackBuilder
+import com.edib.procurement.aipack.MultipartResult
+import com.edib.procurement.aipack.PackEstimate
+import com.edib.procurement.aipack.PackSizeEstimator
+import com.edib.procurement.aipack.PackSplitConfig
+import com.edib.procurement.aipack.StaleMultipartCleanup
 import com.edib.procurement.aipack.AiPackRequest
 import com.edib.procurement.aipack.ResolvedScope
 import com.edib.procurement.aipack.PackNaming
@@ -70,6 +77,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 /** Persisted library configuration. */
@@ -559,6 +567,138 @@ fun homeCounts(): Flow<HomeCounts> {
      * Counts come from the database, never from whatever the UI happens to have
      * paged in, so the estimate matches what will actually be built.
      */
+    /**
+ * The indexed corpus, reduced to what a validation report needs.
+     *
+     * Counts come from the database, so the report reflects what the app has
+     * actually indexed rather than what happens to be on disk.
+     */
+    suspend fun corpusDocuments(): List<CorpusValidator.CorpusDocument> =
+        withContext(Dispatchers.IO) {
+            documentDao.allForValidation().map {
+                CorpusValidator.CorpusDocument(
+                    id = it.id,
+                    displayName = it.displayName,
+                    extension = it.extension ?: "",
+                    size = it.size,
+                    linkCount = it.linkCount,
+                    documentUri = it.documentUri
+                )
+            }
+        }
+
+    /** Opens a source read-only and reports how PDF extraction went. */
+    suspend fun probePdf(uriString: String): CorpusValidator.Outcome =
+        withContext(Dispatchers.IO) {
+            val input = openRead(uriString) ?: return@withContext CorpusValidator.Outcome.FAILED
+            input.use { stream ->
+                when (val r = com.edib.procurement.aipack.PdfTextExtractor(appContext).extract(stream)) {
+                    is com.edib.procurement.aipack.PdfTextExtractor.Result.Text ->
+                        if (r.pages.any { page -> page.isNotBlank() })
+                            CorpusValidator.Outcome.TEXT
+                        else CorpusValidator.Outcome.NO_TEXT
+                    is com.edib.procurement.aipack.PdfTextExtractor.Result.NeedsOcr ->
+                        CorpusValidator.Outcome.NO_TEXT
+                    is com.edib.procurement.aipack.PdfTextExtractor.Result.Failed ->
+                        CorpusValidator.Outcome.FAILED
+                }
+            }
+        }
+
+    suspend fun probeDocx(uriString: String): CorpusValidator.Outcome =
+        withContext(Dispatchers.IO) {
+            val input = openRead(uriString) ?: return@withContext CorpusValidator.Outcome.FAILED
+            input.use {
+                val doc = runCatching {
+                    com.edib.procurement.aipack.DocxTextReader().read(it)
+                }.getOrNull()
+                when {
+                    doc == null -> CorpusValidator.Outcome.FAILED
+                    doc.isEmpty -> CorpusValidator.Outcome.NO_TEXT
+                    else -> CorpusValidator.Outcome.TEXT
+                }
+            }
+        }
+
+    suspend fun probeWorkbook(uriString: String): CorpusValidator.Outcome =
+        withContext(Dispatchers.IO) {
+            val input = openRead(uriString) ?: return@withContext CorpusValidator.Outcome.FAILED
+            input.use {
+                var sawData = false
+                // A counting sink: the report only needs to know whether the
+                // workbook opens and yields any cells, not what they contain.
+                val sink = object : com.edib.procurement.aipack.OpenXmlWorkbookReader.SheetSink {
+                    override fun startSheet(name: String, maxColumn: Int, mergedRanges: List<String>) {}
+                    override fun row(cells: List<com.edib.procurement.aipack.OpenXmlWorkbookReader.Cell>) {
+                        if (cells.any { c -> c.value.isNotBlank() }) sawData = true
+                    }
+                    override fun endSheet() {}
+                }
+                val ok = runCatching {
+                    com.edib.procurement.aipack.OpenXmlWorkbookReader().read(it, sink, true)
+                    true
+                }.getOrDefault(false)
+                when {
+                    !ok -> CorpusValidator.Outcome.FAILED
+                    sawData -> CorpusValidator.Outcome.TEXT
+                    else -> CorpusValidator.Outcome.NO_TEXT
+                }
+            }
+        }
+
+    private fun openRead(uriString: String) = runCatching {
+        appContext.contentResolver.openInputStream(android.net.Uri.parse(uriString))
+    }.getOrNull()
+
+    /**
+     * Builds the corpus validation report.
+     *
+     * The probes reuse the SAME extractors the pack builder uses, so a document
+     * counted as text-readable here is text-readable in a real pack. Nothing is
+     * OCR'd: an image-only PDF is reported as OCR_REQUIRED, which is the
+     * evidence needed to justify a later OCR decision rather than a claim that
+     * one happened.
+     */
+    suspend fun validateCorpus(
+        documents: List<CorpusValidator.CorpusDocument>,
+        probe: suspend (CorpusValidator.CorpusDocument) -> CorpusValidator.Outcome
+    ): CorpusValidator.Report = withContext(Dispatchers.IO) {
+        val tree = currentConfig().treeDisplayName
+        com.edib.procurement.aipack.CorpusValidator(File(appContext.filesDir, "corpus"))
+            .report(documents, { d -> runBlocking { probe(d) } }, tree)
+    }
+
+    /**
+     * Builds the scope as a multipart export: one index plus N parts.
+     *
+     * The generator is shared with the single-pack path, so a split export and a
+     * single export of the same scope extract identically.
+     */
+    suspend fun buildMultipart(
+        scope: PackScope,
+        config: PackSplitConfig,
+        include: PackInclude,
+        detail: PackDetail,
+        onProgress: (PackProgress) -> Unit
+    ): MultipartResult = withContext(Dispatchers.IO) {
+        val single = AiPackBuilder(appContext, packDao, aiPackDao, appContext.filesDir)
+        val builder = MultipartAiPackBuilder(appContext, packDao, aiPackDao, appContext.filesDir, single)
+        builder.build(scope, config, include, detail, onProgress)
+    }
+
+    /** Cheap pre-generation size estimate, from database sizes only. */
+    suspend fun estimatePack(scope: PackScope, targetPartBytes: Long): PackEstimate =
+        withContext(Dispatchers.IO) {
+            val entries = packDao.entriesOfGroups(scope.groupIds)
+            val entryIds = entries.map { it.id }
+            val linked = packDao.linkedDocuments(scope.groupIds, entryIds)
+            val explicit =
+                if (scope.documentIds.isEmpty()) emptyList()
+                else packDao.documentsByIds(scope.documentIds)
+            val docs = (linked + explicit).associateBy { it.id }.values.toList()
+            PackSizeEstimator.estimate(docs, entries.size, targetPartBytes)
+        }
+
     suspend fun packPreview(scope: PackScope): PackPreview = withContext(Dispatchers.IO) {
         val groups = packDao.groupsByIds(scope.groupIds)
         val allEntries =
@@ -598,21 +738,48 @@ suspend fun buildPack(
 
     val packHistory: Flow<List<AiPackEntity>> = aiPackDao.packsFlow()
 
+    /** One-shot list of recorded packs, used by the stale-export cleanup. */
+    suspend fun allPackRecords(): List<AiPackEntity> = withContext(Dispatchers.IO) {
+        aiPackDao.withPaths()
+    }
+
     val packStorageBytes: Flow<Long> = aiPackDao.totalBytesFlow()
 
     fun packSources(packId: Long): Flow<List<AiPackSourceEntity>> =
         aiPackDao.sourcesFlow(packId)
 
     /**
-     * Deletes one generated pack and its history row.
+     * Deletes one generated export and its history row.
      *
-     * Only the file the app produced is removed. No source document is touched:
-     * a pack is a separate file in the app's own storage, and the history row
-     * holds nothing but a path to it.
+     * A MULTIPART row records only the index path, so deleting just that would
+     * orphan every part file beside it. The whole export set is removed here:
+     * the index, every `_<nn>.zip` sharing its stem, and the history row.
+     *
+     * Only files this app produced are touched. No source document is deleted:
+     * packs live in the app's own storage and are separate files.
      */
     suspend fun deletePack(id: Long) = withContext(Dispatchers.IO) {
         val pack = aiPackDao.pack(id) ?: return@withContext
+        val dir = File(appContext.filesDir, "aipacks")
+
         runCatching { java.io.File(pack.absolutePath).delete() }
+
+        if (pack.scopeType == "MULTIPART") {
+            val index = java.io.File(pack.absolutePath)
+            val stem = index.name.removeSuffix("_INDEX.md")
+            // A part of THIS export is exactly "<stem>_<nnn>.zip". Matching the
+            // whole name is what stops a longer sibling export, whose stem
+            // merely begins with this one, from being deleted with it.
+            val partSuffix = Regex("_\\d{2,3}\\.(zip|md)$")
+            runCatching {
+                dir.listFiles()?.forEach { f ->
+                    if (f.name == index.name) return@forEach
+                    val suffix = partSuffix.find(f.name)?.value ?: return@forEach
+                    if (f.name == stem + suffix) f.delete()
+                }
+            }
+        }
+
         aiPackDao.deleteSources(id)
         aiPackDao.delete(id)
     }

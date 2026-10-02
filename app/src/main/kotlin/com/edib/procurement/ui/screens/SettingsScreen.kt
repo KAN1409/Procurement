@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.edib.procurement.aipack.formatBytes
 import com.edib.procurement.ui.ProcurementViewModel
 import com.edib.procurement.ui.components.Chip
 import com.edib.procurement.ui.components.EmptyState
@@ -52,6 +53,8 @@ fun SettingsScreen(
     val config by vm.config.collectAsStateWithLifecycle()
     val imports by vm.imports.collectAsStateWithLifecycle()
     val counts by vm.counts.collectAsStateWithLifecycle()
+    val report by vm.corpusReport.collectAsStateWithLifecycle()
+    val busy by vm.corpusBusy.collectAsStateWithLifecycle()
 
     Column(
         Modifier
@@ -186,6 +189,90 @@ fun SettingsScreen(
                     Guarantee("Manual links are locked")
                     Guarantee("Tags and corrections survive re-import")
                     Guarantee("No cloud, no account, no network")
+                }
+                Spacer(Modifier.height(24.dp))
+            }
+
+            // -------------------------------------------- corpus validation
+            item {
+                Spacer(Modifier.height(12.dp))
+                Panel {
+                    SectionLabel("Corpus validation")
+                    Text(
+                        "Reports what extraction finds in the currently selected " +
+                            "folder. Use it to smoke-test a real business folder before " +
+                            "relying on it.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ProcurementColors.TextSecondary
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { vm.buildCorpusReport() },
+                            enabled = !busy,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ProcurementColors.AccentRed
+                            ),
+                            shape = RoundedCornerShape(2.dp)
+                        ) { Text(if (busy) "CHECKING…" else "CHECK CORPUS") }
+                    }
+                    if (busy) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Probing a sample of the folder; this does not modify anything.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = ProcurementColors.TextTertiary
+                        )
+                    }
+                    report?.let { r ->
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            if (r.treeName.isNullOrBlank()) "Corpus" else "Corpus: ${r.treeName}",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = ProcurementColors.TextPrimary
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Documents ${r.totalDocuments}\n" +
+                                "Total size ${formatBytes(r.totalBytes)}\n" +
+                                "Linked ${r.linkedDocuments} · Unlinked ${r.unlinkedDocuments}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = ProcurementColors.TextSecondary
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "By kind",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = ProcurementColors.TextPrimary
+                        )
+                        r.byKind.forEach { k ->
+                            Text(
+                                "${k.extension.uppercase()}  ${k.documents} files  " +
+                                    formatBytes(k.bytes),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = ProcurementColors.TextSecondary
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Extraction probe (sample of " +
+                                "${if (r.sampled) "first ${r.sampleLimit}" else "all"}):\n" +
+                                "PDF text-readable ${r.pdfTextReadable}" +
+                                " · OCR-required ${r.pdfOcrRequired}" +
+                                " · failed ${r.pdfFailed}\n" +
+                                "DOCX readable ${r.docxReadable} · failed ${r.docxFailed}\n" +
+                                "XLSX readable ${r.xlsxReadable} · failed ${r.xlsxFailed}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = ProcurementColors.TextSecondary
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            r.verdict,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (r.pdfOcrRequired > 0)
+                                ProcurementColors.StatusWarn else ProcurementColors.StatusOk
+                        )
+                    }
                 }
                 Spacer(Modifier.height(24.dp))
             }

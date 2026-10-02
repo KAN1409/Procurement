@@ -24,6 +24,12 @@ import com.edib.procurement.database.LinkTargetRow
 import com.edib.procurement.aipack.PackDetail
 import com.edib.procurement.aipack.AiPackOrigin
 import com.edib.procurement.aipack.AiPackRequest
+import com.edib.procurement.aipack.MultipartResult
+import com.edib.procurement.aipack.CorpusValidator
+import com.edib.procurement.aipack.PackEstimate
+import com.edib.procurement.aipack.PackOutputMode
+import com.edib.procurement.aipack.PackSplitConfig
+import com.edib.procurement.aipack.formatBytes
 import com.edib.procurement.aipack.PackInclude
 import com.edib.procurement.aipack.PackPreview
 import com.edib.procurement.aipack.PackProgress
@@ -114,6 +120,33 @@ class ProcurementViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refreshConfig()
+        cleanStaleMultipartSessions()
+    }
+
+    /**
+     * Clears debris from a killed multipart export.
+     *
+     * Runs once at startup. A completed export has a history row and is never
+     * touched; only part files with no history row, and any temporary ".part"
+     * file, are removed.
+     */
+    private fun cleanStaleMultipartSessions() {
+        viewModelScope.launch {
+            runCatching {
+                val dir = java.io.File(getApplication<Application>().filesDir, "aipacks")
+                val recorded = repo.allPackRecords().mapNotNull { it.absolutePath }
+                    .map { java.io.File(it).name }
+                    .toMutableSet()
+                val r = com.edib.procurement.aipack.StaleMultipartCleanup(dir, recorded).run()
+                if (r.removedAny) {
+                    android.util.Log.i(
+                        "ProcurementPack",
+                        "removed ${r.removedTemp.size} temp, ${r.removedOrphanParts.size} part, " +
+                            "${r.removedOrphanIndex.size} index file(s) from an unfinished export"
+                    )
+                }
+            }
+        }
     }
 
     val contractorAliasCount: StateFlow<Int> = repo.contractorAliasCount()
@@ -678,6 +711,164 @@ val linkGroupPages: StateFlow<PagingData<LinkTargetRow>> =
         packJob?.cancel()
         packJob = null
         _packProgress.value = null
+    }
+
+    private val _multipartResult = MutableStateFlow<MultipartResult?>(null)
+    val multipartResult: StateFlow<MultipartResult?> = _multipartResult.asStateFlow()
+
+    /**
+     * Pre-generation size estimate.
+     *
+     * Uses only database sizes, so it is cheap enough to recompute whenever the
+     * target changes while the configuration sheet is open.
+     */
+    fun estimateSplit(scope: PackScope, targetPartBytes: Long, onReady: (PackEstimate) -> Unit) {
+        viewModelScope.launch {
+            val e = repo.estimatePack(scope, targetPartBytes)
+            onReady(e)
+        }
+    }
+
+    /**
+     * Builds the scope as one index plus N parts.
+     *
+     * Shares the cancellation handle with a single pack, so pressing Cancel
+     * stops whichever run is in flight and the builder removes every file it had
+     * already created.
+     */
+    fun buildMultipartPack(config: PackSplitConfig, include: PackInclude, detail: PackDetail) {
+        val scope = _packScope.value ?: return
+        packJob?.cancel()
+        packJob = viewModelScope.launch {
+            _packProgress.value = PackProgress("Preparing", 0, 0)
+            _multipartResult.value = null
+            try {
+                val r = repo.buildMultipart(scope, config, include, detail) { p ->
+                    _packProgress.value = p
+                }
+                _multipartResult.value = r
+                if (!r.integrity.ok) {
+                    say("Export failed its integrity check and was discarded", isError = true)
+                } else {
+                    say(
+                        "AI Pack export created: ${r.partFileNames.size} part(s), " +
+                            formatBytes(r.totalPackBytes)
+                    )
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                _packProgress.value = null
+                _multipartResult.value = null
+                say("AI Pack export cancelled")
+            } catch (e: Throwable) {
+                _packProgress.value = null
+                _multipartResult.value = null
+                say(e.message ?: "AI Pack export failed", isError = true)
+            }
+        }
+    }
+
+    /** Share one generated part. */
+    fun sharePartFile(path: String) {
+        val f = java.io.File(path)
+        if (!f.exists()) {
+            say("That part is no longer available", isError = true)
+            return
+        }
+        val uri = repo.shareUriFor(f) ?: run {
+            say("That part is no longer available", isError = true)
+            return
+        }
+        ExternalDocumentOpener.shareFile(getApplication(), uri, "application/zip", "Share AI Pack")
+    }
+
+    private val _corpusReport = MutableStateFlow<CorpusValidator.Report?>(null)
+    val corpusReport: StateFlow<CorpusValidator.Report?> = _corpusReport.asStateFlow()
+
+    private val _corpusBusy = MutableStateFlow(false)
+    val corpusBusy: StateFlow<Boolean> = _corpusBusy.asStateFlow()
+
+    /**
+     * Builds the corpus validation report for the currently selected folder.
+     *
+     * This is the smoke-test aid for a future REAL business folder. It reports
+     * what extraction would find; it does not run OCR and it does not claim a
+     * real corpus has been validated.
+     */
+    fun buildCorpusReport() {
+        viewModelScope.launch {
+            _corpusBusy.value = true
+            _corpusReport.value = null
+            try {
+                val docs = repo.corpusDocuments()
+                val report = repo.validateCorpus(docs) { d ->
+                    when {
+                        d.extension.equals("pdf", true) ->
+                            repo.probePdf(d.documentUri)
+                        d.extension.equals("docx", true) ->
+                            repo.probeDocx(d.documentUri)
+                        d.extension.equals("xlsx", true) ||
+                            d.extension.equals("xls", true) ->
+                            repo.probeWorkbook(d.documentUri)
+                        else -> CorpusValidator.Outcome.TEXT
+                    }
+                }
+                _corpusReport.value = report
+            } catch (e: Throwable) {
+                say("Could not read the document folder", isError = true)
+            } finally {
+                _corpusBusy.value = false
+            }
+        }
+    }
+
+    /** Opens a generated index or part with an external viewer. */
+    fun openGeneratedFile(path: String) {
+        val f = java.io.File(path)
+        if (!f.exists()) {
+            say("That file is no longer available", isError = true)
+            return
+        }
+        openDocument(
+            f.toURI().toString(),
+            if (f.name.endsWith(".zip")) "zip" else "md",
+            null
+        )
+    }
+
+    /** Share the index. */
+    fun shareIndexFile(path: String) {
+        val f = java.io.File(path)
+        if (!f.exists()) {
+            say("The index is no longer available", isError = true)
+            return
+        }
+        val uri = repo.shareUriFor(f) ?: run {
+            say("The index is no longer available", isError = true)
+            return
+        }
+        ExternalDocumentOpener.shareFile(getApplication(), uri, "text/markdown", "Share AI Pack Index")
+    }
+
+    /**
+     * Share the index and every part in one ACTION_SEND_MULTIPLE.
+     *
+     * Not every target accepts a multi-file share; individual part sharing
+     * remains available for that case.
+     */
+    fun shareAll(r: MultipartResult) {
+        val files = (listOf(r.indexPath) + r.partPaths)
+            .map { java.io.File(it) }
+            .filter { it.exists() }
+        if (files.isEmpty()) {
+            say("Those files are no longer available", isError = true)
+            return
+        }
+        val uris = files.mapNotNull { repo.shareUriFor(it) }
+        if (uris.isEmpty()) {
+            say("Those files are no longer available", isError = true)
+            return
+        }
+        ExternalDocumentOpener.shareFiles(getApplication(), uris)
     }
 
     fun sharePack(result: PackResult) {

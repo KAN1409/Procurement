@@ -29,6 +29,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +46,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.edib.procurement.aipack.PackDetail
+import com.edib.procurement.aipack.PartSizePreset
+import com.edib.procurement.aipack.formatBytes
+import com.edib.procurement.aipack.PackEstimate
+import com.edib.procurement.aipack.PackOutputMode
+import com.edib.procurement.aipack.PackSplitConfig
 import com.edib.procurement.aipack.PackInclude
 import com.edib.procurement.aipack.PackScope
 import com.edib.procurement.ui.ProcurementViewModel
@@ -69,6 +75,7 @@ fun AiPackScreen(vm: ProcurementViewModel, onClose: () -> Unit) {
     val preview by vm.packPreview.collectAsStateWithLifecycle()
     val progress by vm.packProgress.collectAsStateWithLifecycle()
     val result by vm.packResult.collectAsStateWithLifecycle()
+    val multipart by vm.multipartResult.collectAsStateWithLifecycle()
 
     var include by remember {
         mutableStateOf(
@@ -80,6 +87,20 @@ fun AiPackScreen(vm: ProcurementViewModel, onClose: () -> Unit) {
     }
     var detail by remember { mutableStateOf(PackDetail.COMPACT) }
     var zip by remember { mutableStateOf(true) }
+    var splitMode by remember { mutableStateOf(false) }
+    var targetPartBytes by remember { mutableStateOf(PartSizePreset.DEFAULT.bytes) }
+    var estimate by remember { mutableStateOf<PackEstimate?>(null) }
+
+    // A cheap pre-generation hint. It runs off the database sizes only, so it
+    // never parses a source twice just to show a number.
+    fun showEstimate(s: PackScope?) {
+        if (s == null) { estimate = null; return }
+        vm.estimateSplit(s, targetPartBytes) { estimate = it }
+    }
+
+    LaunchedEffect(scope, splitMode, targetPartBytes) {
+        if (splitMode) showEstimate(scope) else estimate = null
+    }
     var showConfig by remember { mutableStateOf(true) }
     var picking by remember { mutableStateOf(false) }
     var docQuery by remember { mutableStateOf("") }
@@ -93,6 +114,15 @@ fun AiPackScreen(vm: ProcurementViewModel, onClose: () -> Unit) {
         ScreenHeader("AI Pack", scope?.name ?: "")
 
         when {
+            multipart != null -> MultipartResultView(
+                result = multipart!!,
+                onShareIndex = { vm.shareIndexFile(multipart!!.indexPath) },
+                onSharePart = { vm.sharePartFile(it) },
+                onShareAll = { vm.shareAll(multipart!!) },
+                onOpen = { vm.openGeneratedFile(it) },
+                onDone = { vm.clearPack(); showConfig = true }
+            )
+
             result != null -> PackResultView(
                 result = result!!,
                 onOpen = { vm.openPack(result!!) },
@@ -127,6 +157,17 @@ fun AiPackScreen(vm: ProcurementViewModel, onClose: () -> Unit) {
                         previewEntries = preview?.entries ?: 0,
                         previewDocuments = preview?.documents ?: 0,
                         originalBytes = preview?.originalBytes ?: 0,
+                        splitMode = splitMode,
+                        targetPartBytes = targetPartBytes,
+                        estimate = estimate,
+                        onSplit = { v ->
+                            splitMode = v
+                            if (v) showEstimate(scope) else estimate = null
+                        },
+                        onTarget = { b ->
+                            targetPartBytes = b
+                            showEstimate(scope)
+                        },
                         include = include,
                         onInclude = { include = it },
                         detail = detail,
@@ -136,7 +177,14 @@ fun AiPackScreen(vm: ProcurementViewModel, onClose: () -> Unit) {
                         onAddDocuments = { picking = true },
                         onCreate = {
                             showConfig = false
-                            vm.buildPack(include, detail, zip)
+                            if (splitMode) {
+                                vm.buildMultipartPack(
+                                    PackSplitConfig(PackOutputMode.SPLIT, targetPartBytes),
+                                    include, detail
+                                )
+                            } else {
+                                vm.buildPack(include, detail, zip)
+                            }
                         },
                         onCancel = onClose
                     )
@@ -175,6 +223,11 @@ private fun ConfigurationSheet(
     previewEntries: Int,
     previewDocuments: Int,
     originalBytes: Long,
+    splitMode: Boolean,
+    targetPartBytes: Long,
+    estimate: PackEstimate?,
+    onSplit: (Boolean) -> Unit,
+    onTarget: (Long) -> Unit,
     include: PackInclude,
     onInclude: (PackInclude) -> Unit,
     detail: PackDetail,
@@ -259,6 +312,91 @@ private fun ConfigurationSheet(
                 RadioButton(selected = !zip, onClick = { onZip(false) })
                 Text("Single .md", style = MaterialTheme.typography.bodyMedium,
                     color = ProcurementColors.TextPrimary)
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        // ---------------- pack output -------------------------------
+        Panel {
+            SectionLabel("Pack output")
+            // The whole row is the touch target, not just the radio: a bare RadioButton
+            // is a small target and a label-only tap does nothing.
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { onSplit(false) }
+                    .padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = !splitMode,
+                    onClick = { onSplit(false) }
+                )
+                Text(
+                    "Single pack when possible",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ProcurementColors.TextPrimary
+                )
+            }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { onSplit(true) }
+                    .padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(selected = splitMode, onClick = { onSplit(true) })
+                Text(
+                    "Split automatically",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ProcurementColors.TextPrimary
+                )
+            }
+            if (splitMode) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Target part size",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ProcurementColors.TextSecondary
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PartSizePreset.values().forEach { preset ->
+                        OutlinedButton(
+                            onClick = { onTarget(preset.bytes) },
+                            shape = RoundedCornerShape(2.dp),
+                            colors = if (targetPartBytes == preset.bytes)
+                                ButtonDefaults.outlinedButtonColors(
+                                    contentColor = ProcurementColors.AccentRedBright
+                                )
+                            else ButtonDefaults.outlinedButtonColors()
+                        ) { Text(preset.label) }
+                    }
+                }
+            }
+            estimate?.let { e ->
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "ESTIMATE (not exact)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ProcurementColors.StatusWarn
+                )
+                Text(
+                    "Original documents   ${formatBytes(e.originalBytes)}\n" +
+                        "Estimated normalized ${formatBytes(e.estimatedNormalizedBytes)}\n" +
+                        "Target               ${formatBytes(e.targetPartBytes)} / part\n" +
+                        "Expected             ~${e.estimatedParts} part" +
+                        (if (e.estimatedParts == 1) "" else "s"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ProcurementColors.TextSecondary
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Sizes are estimated from the source documents, so the actual part " +
+                        "count can differ. A document is never split across parts.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ProcurementColors.TextTertiary
+                )
             }
         }
 

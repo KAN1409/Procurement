@@ -48,6 +48,135 @@ class AiPackBuilder(
     private val docxReader = DocxTextReader()
     private val pdfExtractor = PdfTextExtractor(context)
 
+    // The multipart builder reuses these exact extractors so a split export and
+    // a single export of the same scope produce byte-identical source content.
+    internal fun workbookReaderForSplit() = workbookReader
+    internal fun docxReaderForSplit() = docxReader
+    internal fun pdfExtractorForSplit() = pdfExtractor
+
+    /**
+     * Writes one document's SOURCE block.
+     *
+     * Shared by the single and the multipart paths on purpose: extraction is
+     * verified logic, and having two copies is how a split pack silently starts
+     * differing from a single one. The multipart builder supplies its own header
+     * lines and calls this for the body only.
+     */
+    internal fun writeSourceBlock(
+        text: PackTextWriter,
+        doc: PackDocumentRow,
+        links: List<com.edib.procurement.database.PackLinkRow>,
+        sourceId: String,
+        include: PackInclude,
+        detail: PackDetail,
+        onSource: (PackSource) -> Unit,
+        onExtractProgress: (String, Int, Int) -> Unit = { _, _, _ -> }
+    ) {
+        val best = links.maxByOrNull { it.confidence }
+        val ext = (doc.extension ?: "").lowercase()
+
+        text.rule()
+        text.line(sourceId)
+        text.rule()
+        text.line()
+        text.line("Filename: ${doc.displayName}")
+        text.line("Relative Path: ${doc.relativePath}")
+        text.line("Type: ${ext.uppercase()}")
+        text.line("Original Size: ${formatBytes(doc.size)}")
+        text.line("Linked: ${if (best != null) "yes" else "no (selected manually)"}")
+        best?.let {
+            text.line("Link Type: ${if (it.isManual) "MANUAL" else it.linkType}")
+            text.line("Match Method: ${it.matchMethod}")
+            it.evidence?.lines()?.forEach { line -> text.line("  $line") }
+        }
+        text.line()
+
+        val wanted = when (ext) {
+            "pdf" -> include.pdf
+            "xlsx", "xls" -> include.excel
+            "docx" -> include.word
+            "txt", "csv", "md" -> include.text
+            else -> false
+        }
+
+        var status = ExtractionStatus.SUCCESS
+        var detailText: String? = null
+        // The extractors report OCR_REQUIRED / ERROR in their own body; this
+        // stops the summary being written twice.
+        var statusReportedInBody = false
+
+        if (!wanted) {
+            status = ExtractionStatus.SKIPPED
+            detailText = "not included by the current options"
+        } else {
+            try {
+                val outcome = openStream(Uri.parse(doc.documentUri))
+                if (outcome == null) {
+                    status = ExtractionStatus.ERROR
+                    detailText = "file could not be opened"
+                } else {
+                    outcome.use { input ->
+                        status = when (ext) {
+                            "pdf" -> emitPdf(text, input)
+                            "xlsx", "xls" -> {
+                                emitWorkbook(text, input, detail, doc.displayName) { d, s ->
+                                    onExtractProgress("Extracting ${doc.displayName}", s, 100)
+                                }
+                                ExtractionStatus.SUCCESS
+                            }
+                            "docx" -> emitDocx(text, input)
+                            else -> {
+                                emitPlainText(text, input, ext)
+                                ExtractionStatus.SUCCESS
+                            }
+                        }
+                    }
+                }
+            } catch (t: Throwable) {
+                // One bad file must never cost the rest of the pack.
+                status = ExtractionStatus.ERROR
+                detailText = t.message ?: t.javaClass.simpleName
+                Log.w(TAG, "extraction failed for ${doc.displayName}", t)
+            }
+        }
+
+        statusReportedInBody = status == ExtractionStatus.OCR_REQUIRED ||
+            status == ExtractionStatus.ERROR
+
+        if (!statusReportedInBody) {
+            if (status == ExtractionStatus.ERROR) {
+                text.line("Extraction: ERROR")
+                text.line("Reason: $detailText")
+            } else {
+                text.line("Extraction: ${status.name}")
+            }
+        }
+        text.line()
+
+        if (status == ExtractionStatus.OCR_REQUIRED && detailText == null) {
+            detailText = "no extractable text; the document is image-based"
+        }
+
+        onSource(
+            PackSource(
+                sourceId = sourceId,
+                documentId = doc.id,
+                filename = doc.displayName,
+                relativePath = doc.relativePath,
+                mimeType = doc.mimeType,
+                sizeBytes = doc.size,
+                linkedGroupCode = null,
+                linkedEntryCode = null,
+                linkType = best?.linkType,
+                matchEvidence = best?.evidence,
+                status = status,
+                detail = detailText,
+                checksum = doc.lazySha256,
+                linkedManually = best?.isManual ?: false
+            )
+        )
+    }
+
     suspend fun build(
         scope: PackScope,
         include: PackInclude,
@@ -593,13 +722,7 @@ class AiPackBuilder(
     private fun stamp(): String =
         SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
 
-    private fun humanBytes(bytes: Long): String = when {
-        bytes <= 0 -> "0 B"
-        bytes < 1024 -> "$bytes B"
-        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
-        bytes < 1024L * 1024 * 1024 -> "${"%.1f".format(bytes / 1024.0 / 1024)} MB"
-        else -> "${"%.2f".format(bytes / 1024.0 / 1024 / 1024)} GB"
-    }
+    private fun humanBytes(bytes: Long): String = formatBytes(bytes)
 
     internal companion object {
         const val TAG = "ProcurementPack"

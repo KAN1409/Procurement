@@ -133,6 +133,16 @@ data class ProjectDetail(
     val contractorCount: Int
 )
 
+/** One indexed document, for the corpus validation report. */
+data class CorpusDocumentRow(
+    val id: Long,
+    val displayName: String,
+    val extension: String?,
+    val size: Long,
+    val documentUri: String,
+    val linkCount: Int
+)
+
 data class HomeCounts(
     val projects: Int,
     val groups: Int,
@@ -898,6 +908,8 @@ interface FollowUpDao {
     )
     suspend fun allDocumentIds(query: String): List<Long>
 
+
+
     /** Paging source for the "Link to…" entry picker. */
     @Query(
         """
@@ -1521,6 +1533,25 @@ interface DocumentDao {
 
     @Query("SELECT * FROM app_setting")
     fun allSettingsFlow(): Flow<List<AppSettingEntity>>
+    /**
+     * Every indexed document with its link count.
+     *
+     * Used by the corpus validation report. It is a flat projection with no
+     * document content, so listing a real folder of thousands of files stays
+     * cheap.
+     */
+    @Query(
+        """
+        SELECT d.id AS id, d.displayName AS displayName, d.extension AS extension,
+               d.size AS size, d.documentUri AS documentUri,
+               (SELECT COUNT(*) FROM document_link l WHERE l.documentId = d.id) AS linkCount
+        FROM document d
+        WHERE d.isMissing = 0
+        ORDER BY d.id ASC
+        """
+    )
+    suspend fun allForValidation(): List<CorpusDocumentRow>
+
 }
 
 @Dao
