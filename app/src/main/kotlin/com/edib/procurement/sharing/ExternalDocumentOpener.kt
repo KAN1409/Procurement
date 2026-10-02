@@ -3,6 +3,7 @@ package com.edib.procurement.sharing
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.content.ClipData
 import android.net.Uri
 import com.edib.procurement.documents.DocumentTreeScanner
 
@@ -97,8 +98,13 @@ object ExternalDocumentOpener {
      * Share several generated files at once.
      *
      * Uses ACTION_SEND_MULTIPLE so one chooser action delivers the index and all
-     * parts together. Targets that only accept a single file will simply ignore
-     * the extra ones, which is why single-file sharing stays available.
+     * parts together.
+     *
+     * The intent type is derived from the files rather than fixed to zip. That
+     * matters in practice: a receiving app filters on MIME, and labelling a
+     * markdown index as application/zip caused ChatGPT to silently drop it while
+     * accepting every part. "*&#47;*" is the deliberate choice when a set mixes
+     * kinds, because it is the only value every target accepts.
      */
     fun shareFiles(context: Context, contentUris: List<Uri>, title: String = "Share AI Pack")
             : OpenResult {
@@ -106,12 +112,21 @@ object ExternalDocumentOpener {
         val send = Intent(
             if (contentUris.size == 1) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE
         ).apply {
-            type = if (contentUris.size == 1) "*/*" else "application/zip"
+            type = if (contentUris.size == 1) "*/*" else "*/*"
             if (contentUris.size == 1) putExtra(Intent.EXTRA_STREAM, contentUris.first())
             else putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(contentUris))
             putExtra(Intent.EXTRA_SUBJECT, title)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
+        // Per-clip type so a markdown index is announced as markdown. Some
+        // receivers read ClipData rather than EXTRA_STREAM.
+        val clip = ClipData.newUri(
+            context.contentResolver, title, contentUris.first()
+        )
+        for (i in 1 until contentUris.size) {
+            clip.addItem(ClipData.Item(contentUris[i]))
+        }
+        send.clipData = clip
         val chooser = Intent.createChooser(send, title).apply {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

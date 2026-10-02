@@ -132,21 +132,59 @@ class MultipartAiPackBuilder(
         if (!outDir.exists()) outDir.mkdirs()
         val baseStem = PackNaming.fileStem(scope.name, scope.type)
 
-        // ---------------- plan ----------------
-        // Documents keep the same order they appear in the scope, so SOURCE ids
-        // and part membership are reproducible run to run.
+        // Source ids are assigned once across the whole export and never restarted,
+        // so a source id in the index always identifies one document in one part.
         val sourceIdOf = PackSplitter.assignSourceIds(byId.keys.toList())
 
-        // Which entries and groups each document belongs to, for grouping units.
+        // ---------------- spool ----------------
+        // Every source is normalized ONCE into a temporary spool. That gives a
+        // measured uncompressed size and a measured DEFLATE size, so the planner
+        // works in the units the user actually uploads, and the part writer
+        // copies the same bytes instead of extracting them a second time.
+        val progress = AiPackBuilder.ProgressGate(onProgress)
+        val spool = NormalizedSpool(File(workspace, "spool"))
+        val spoolStatus = HashMap<Long, Pair<ExtractionStatus, String?>>()
+
+        // ---------------- spool ----------------
+        // Every source is normalized ONCE into a temporary spool. That gives a
+        // measured uncompressed size and a measured DEFLATE size, so the planner
+        // works in the units the user actually uploads, and the part writer
+        // copies the same bytes instead of extracting them a second time.
+        progress.publish("Normalizing documents", 0, byId.size)
+        byId.values.forEachIndexed { i, d ->
+            currentCoroutineContext().ensureActive()
+            val sid = sourceIdOf[d.id]!!
+            val f = spool.create(d.id, sid)
+            // The shared, verified extractor writes into the spool file.
+            val sink = PackTextWriter(f.outputStream().buffered(64 * 1024))
+            single.writeSourceBlock(
+                sink, d, linksByDoc[d.id].orEmpty(), sid, include, detail,
+                onSource = { s -> spoolStatus[d.id] = s.status to s.detail }
+            )
+            sink.flush()
+            sink.close()
+            spool.register(d.id, sid, f)
+            progress.publish("Normalizing documents", i + 1, byId.size)
+        }
+
+        // ---------------- plan ----------------
+        // Documents keep the order they appear in the scope, so SOURCE ids and
+        // part membership are reproducible run to run.
         val entriesByGroup: Map<Long, List<EntryRow>> = entries.groupBy { it.groupId }
-        val docsByGroup: Map<Long, List<PackDocumentRow>> = documentsByGroup(byId, linksByDoc, scope)
+        val docsByGroup: Map<Long, List<PackDocumentRow>> =
+            documentsByGroup(byId, linksByDoc, scope)
+
+        // Metadata is tiny and highly compressible; a measured constant is
+        // used for it rather than a guess, since it never decides a split on
+        // its own.
+        val metaCompressed = normalizedTextOverheadEstimate(groupRows.size, entries.size)
 
         val units = ArrayList<PackSplitter.Unit>()
         groupRows.forEach { g ->
             units.add(
                 PackSplitter.Unit(
                     key = "g:${g.groupId}", kind = PackSplitter.Unit.Kind.GROUP_HEADER,
-                    bytes = PackSizeEstimator.GROUP_HEADER_BYTES,
+                    bytes = metaCompressed.groupHeader,
                     groupKey = "g:${g.groupId}", groupLabel = g.rootCodeRaw ?: "Group ${g.groupId}"
                 )
             )
@@ -154,17 +192,18 @@ class MultipartAiPackBuilder(
                 units.add(
                     PackSplitter.Unit(
                         key = "e:${e.id}", kind = PackSplitter.Unit.Kind.ENTRY,
-                        bytes = PackSizeEstimator.ENTRY_METADATA_BYTES,
+                        bytes = metaCompressed.entry,
                         groupKey = "g:${g.groupId}", groupLabel = g.rootCodeRaw,
                         entryCode = e.codeRaw ?: e.id.toString()
                     )
                 )
             }
             docsByGroup[g.groupId].orEmpty().forEach { d ->
+                val sp = spool.get(d.id)!!
                 units.add(
                     PackSplitter.Unit(
                         key = "s:${d.id}", kind = PackSplitter.Unit.Kind.SOURCE,
-                        bytes = PackSizeEstimator.normalizedSizeOf(d),
+                        bytes = sp.predictedZipBytes,
                         groupKey = "g:${g.groupId}", groupLabel = g.rootCodeRaw,
                         sourceId = sourceIdOf[d.id], documentId = d.id,
                         filename = d.displayName
@@ -176,9 +215,10 @@ class MultipartAiPackBuilder(
         // A DOCUMENTS scope with no groups still has units: its sources.
         val groupFreeUnits = if (groupRows.isEmpty()) {
             byId.values.map { d ->
+                val sp = spool.get(d.id)!!
                 PackSplitter.Unit(
                     key = "s:${d.id}", kind = PackSplitter.Unit.Kind.SOURCE,
-                    bytes = PackSizeEstimator.normalizedSizeOf(d),
+                    bytes = sp.predictedZipBytes,
                     sourceId = sourceIdOf[d.id], documentId = d.id,
                     filename = d.displayName
                 )
@@ -202,8 +242,6 @@ class MultipartAiPackBuilder(
         var unsupported = 0
         var errors = 0
         var skipped = 0
-
-        val progress = AiPackBuilder.ProgressGate(onProgress)
 
         try {
             // Continuity: which groups start / continue / carry on / end per part.
@@ -268,7 +306,7 @@ class MultipartAiPackBuilder(
                 ) { text ->
                     writeBody(
                         text, scope, partUnits, groupRows, entriesByGroup, entries, detail,
-                        linksByDoc, sourceIdOf, byId, include,
+                        linksByDoc, sourceIdOf, byId, include, spool, spoolStatus,
                         onSource = { s ->
                             partSources.add(s)
                             when (s.status) {
@@ -286,15 +324,21 @@ class MultipartAiPackBuilder(
                     )
                 }
                 // Rewrite the manifest now that the real source outcomes are known.
+                // This REBUILDS the zip, so the size and checksum must be taken
+                // afterwards: recording them earlier would describe a file that no
+                // longer exists on disk.
                 rewriteManifest(written.file, exportId, part.number, plan.size,
                     config.targetPartBytes, scope, generatedAt, partGroupLabels,
                     partEntryCodes, originalTotalBytes, written.normalizedBytes,
                     partSources.size, reason, partSources)
 
+                val finalBytes = written.file.length()
+                val finalSha = PartWriter.sha256(written.file)
+
                 partFiles.add(outFile)
                 created.add(outFile)
-                partBytes.add(written.actualBytes)
-                partChecksums.add(written.sha256)
+                partBytes.add(finalBytes)
+                partChecksums.add(finalSha)
                 sourcesByPart.addAll(partSources)
                 partSourceIds.add(ArrayList(partSources.map { it.sourceId }))
 
@@ -327,6 +371,7 @@ class MultipartAiPackBuilder(
             if (!integrity.ok) {
                 // Never expose a broken export as finished.
                 cleanup(created, tempFiles)
+                spool.clear()
                 throw PackSplitException(
                     "Export integrity check failed: " + integrity.problems.joinToString("; ")
                 )
@@ -403,11 +448,14 @@ class MultipartAiPackBuilder(
 
             // History is written only after the integrity check passes.
             recordHistory(result, sourcesByPart)
+            // The spool is scratch space, never an output; drop it either way.
+            spool.clear()
             result
         } catch (t: Throwable) {
             // Cancel or failure: remove everything this run created, including
             // parts already finished, so no partial export survives.
             cleanup(created, tempFiles)
+            spool.clear()
             throw t
         }
     }
@@ -521,6 +569,8 @@ class MultipartAiPackBuilder(
         sourceIdOf: Map<Long, String>,
         byId: Map<Long, PackDocumentRow>,
         include: PackInclude,
+        spool: NormalizedSpool,
+        spoolStatus: Map<Long, Pair<ExtractionStatus, String?>>,
         onSource: (PackSource) -> Unit,
         onProgress: (String, Int, Int) -> Unit
     ) {
@@ -576,12 +626,47 @@ class MultipartAiPackBuilder(
 
                 PackSplitter.Unit.Kind.SOURCE -> {
                     val doc = byId[unit.documentId] ?: return@forEachIndexed
-                    // Reuse the verified single-pack extractor so a split export
-                    // and a single export of the same scope cannot diverge.
-                    single.writeSourceBlock(
-                        text, doc, linksByDoc[doc.id].orEmpty(), sourceIdOf[doc.id]!!,
-                        include, detail, onSource, onProgress
-                    )
+                    val sp = spool.get(doc.id)
+                    if (sp == null) {
+                        // Not spooled (it was excluded); emit the stub only.
+                        single.writeSourceBlock(
+                            text, doc, linksByDoc[doc.id].orEmpty(), sourceIdOf[doc.id]!!,
+                            include, detail, onSource, onProgress
+                        )
+                    } else {
+                        // The block was already extracted into the spool. Copy
+                        // those exact bytes: never extract the same source twice.
+                        text.rule()
+                        text.line(unit.sourceId!!)
+                        text.rule()
+                        text.line()
+                        spool.copyTo(sp, text.rawOut())
+                        // Report the outcome recorded during spooling, so the
+                        // manifest still shows the real extraction status.
+                        val (status, detail) = spoolStatus[doc.id]
+                            ?: (ExtractionStatus.SUCCESS to null)
+                        onSource(
+                            PackSource(
+                                sourceId = unit.sourceId!!,
+                                documentId = doc.id,
+                                filename = doc.displayName,
+                                relativePath = doc.relativePath,
+                                mimeType = doc.mimeType,
+                                sizeBytes = doc.size,
+                                linkedGroupCode = null,
+                                linkedEntryCode = null,
+                                linkType = linksByDoc[doc.id].orEmpty()
+                                    .maxByOrNull { it.confidence }?.linkType,
+                                matchEvidence = linksByDoc[doc.id].orEmpty()
+                                    .maxByOrNull { it.confidence }?.evidence,
+                                status = status,
+                                detail = detail,
+                                checksum = doc.lazySha256,
+                                linkedManually = linksByDoc[doc.id].orEmpty()
+                                    .maxByOrNull { it.confidence }?.isManual ?: false
+                            )
+                        )
+                    }
                 }
             }
         }
@@ -590,3 +675,44 @@ class MultipartAiPackBuilder(
 
 /** Raised when an export fails its integrity check. */
 class PackSplitException(message: String) : Exception(message)
+
+/**
+ * Compressed size attributed to Follow-up metadata (group headers and entries).
+ *
+ * This text is short, structurally repetitive and therefore highly compressible,
+ * so it is measured once per export from a representative sample instead of
+ * being guessed per row. It never decides a split on its own.
+ */
+internal fun normalizedTextOverheadEstimate(groupCount: Int, entryCount: Int): MetadataBytes {
+    if (groupCount == 0 && entryCount == 0) return MetadataBytes(0, 0)
+    // A representative block: one group header and two entries, each with the
+    // longest fields they normally carry.
+    val sample = buildString {
+        repeat(maxOf(groupCount, 1)) {
+            appendLine("FOLLOW-UP GROUP")
+            appendLine("Project: ")
+            appendLine("Area: ")
+            appendLine("Related To: ")
+            appendLine("Anchor Code: ")
+            appendLine("Source Workbook Row: ")
+        }
+        repeat(maxOf(entryCount, 1)) {
+            appendLine("ENTRY")
+            appendLine("Code: ")
+            appendLine("Contractor: ")
+            appendLine("Raw Contractor: ")
+            appendLine("Description: ")
+            appendLine("PR Date: ")
+            appendLine("Notes: ")
+        }
+    }
+    val compressed = NormalizedSpool.measureDeflate(sample.toByteArray(Charsets.UTF_8))
+    val units = maxOf(groupCount + entryCount, 1)
+    val per = (compressed / units).coerceAtLeast(16L)
+    return MetadataBytes(
+        groupHeader = per,
+        entry = per
+    )
+}
+
+data class MetadataBytes(val groupHeader: Long, val entry: Long)

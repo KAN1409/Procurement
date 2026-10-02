@@ -13,7 +13,7 @@ import java.nio.charset.StandardCharsets
  * assembled as one large String. A pack may stand in for hundreds of megabytes
  * of originals, so the whole pipeline is bounded-memory by construction.
  */
-class PackTextWriter(out: OutputStream) {
+class PackTextWriter(private val out: OutputStream) {
 
     private val writer: Writer = BufferedWriter(OutputStreamWriter(out, StandardCharsets.UTF_8), 64 * 1024)
 
@@ -21,6 +21,18 @@ class PackTextWriter(out: OutputStream) {
     private var lineOpen = false
 
     val size: Long get() = bytesWritten
+
+    /**
+     * The underlying stream, so a spooled normalized block can be copied in
+     * without being re-extracted.
+     *
+     * Any buffered text is flushed first, otherwise the copy would land before
+     * the rule lines that precede it.
+     */
+    fun rawOut(): OutputStream {
+        writer.flush()
+        return out
+    }
 
     private fun write(s: String) {
         writer.write(s)

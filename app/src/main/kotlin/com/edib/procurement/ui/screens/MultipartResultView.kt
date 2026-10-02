@@ -102,14 +102,24 @@ fun MultipartResultView(
         Panel {
             SectionLabel("Size accounting")
             Text(
-                "Original documents   ${formatBytes(result.originalTotalBytes)}\n" +
-                    "Normalized           ${formatBytes(result.normalizedTotalBytes)}\n" +
-                    "Parts                ${result.partFileNames.size}\n" +
-                    "Target per part      ${formatBytes(result.targetPartBytes)}\n" +
-                    "Reduction            ${"%.1f".format(result.reduction * 100)}%",
+                "Original source size    ${formatBytes(result.originalTotalBytes)}\n" +
+                    "Normalized (raw text)   ${formatBytes(result.normalizedTotalBytes)}\n" +
+                    "Final package           ${formatBytes(result.totalPackBytes)}\n" +
+                    "Parts                   ${result.partFileNames.size}\n" +
+                    "Target per part         ${formatBytes(result.targetPartBytes)}\n" +
+                    "Reduction vs original   ${"%.1f".format(result.reduction * 100)}%",
                 style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
                 color = ProcurementColors.TextSecondary
             )
+            Spacer(Modifier.height(6.dp))
+            result.partFileNames.forEachIndexed { i, _ ->
+                Text(
+                    "${PackSplitter.partLabel(i + 1, width)}   " +
+                        formatBytes(result.partBytes[i]),
+                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                    color = ProcurementColors.TextSecondary
+                )
+            }
         }
 
         Spacer(Modifier.height(10.dp))

@@ -48,7 +48,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.edib.procurement.aipack.PackDetail
 import com.edib.procurement.aipack.PartSizePreset
 import com.edib.procurement.aipack.formatBytes
-import com.edib.procurement.aipack.PackEstimate
+import com.edib.procurement.aipack.PackSizeEstimator
 import com.edib.procurement.aipack.PackOutputMode
 import com.edib.procurement.aipack.PackSplitConfig
 import com.edib.procurement.aipack.PackInclude
@@ -89,7 +89,7 @@ fun AiPackScreen(vm: ProcurementViewModel, onClose: () -> Unit) {
     var zip by remember { mutableStateOf(true) }
     var splitMode by remember { mutableStateOf(false) }
     var targetPartBytes by remember { mutableStateOf(PartSizePreset.DEFAULT.bytes) }
-    var estimate by remember { mutableStateOf<PackEstimate?>(null) }
+    var estimate by remember { mutableStateOf<PackSizeEstimator.Prediction?>(null) }
 
     // A cheap pre-generation hint. It runs off the database sizes only, so it
     // never parses a source twice just to show a number.
@@ -225,7 +225,7 @@ private fun ConfigurationSheet(
     originalBytes: Long,
     splitMode: Boolean,
     targetPartBytes: Long,
-    estimate: PackEstimate?,
+    estimate: PackSizeEstimator.Prediction?,
     onSplit: (Boolean) -> Unit,
     onTarget: (Long) -> Unit,
     include: PackInclude,
@@ -356,7 +356,7 @@ private fun ConfigurationSheet(
             if (splitMode) {
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "Target part size",
+                    "Target final pack size",
                     style = MaterialTheme.typography.labelSmall,
                     color = ProcurementColors.TextSecondary
                 )
@@ -377,23 +377,25 @@ private fun ConfigurationSheet(
             estimate?.let { e ->
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "ESTIMATE (not exact)",
+                    "ESTIMATE (measured, may vary slightly)",
                     style = MaterialTheme.typography.labelSmall,
                     color = ProcurementColors.StatusWarn
                 )
                 Text(
-                    "Original documents   ${formatBytes(e.originalBytes)}\n" +
-                        "Estimated normalized ${formatBytes(e.estimatedNormalizedBytes)}\n" +
-                        "Target               ${formatBytes(e.targetPartBytes)} / part\n" +
-                        "Expected             ~${e.estimatedParts} part" +
-                        (if (e.estimatedParts == 1) "" else "s"),
+                    "Original source size    ${formatBytes(e.originalBytes)}\n" +
+                        "Normalized (raw text)   ${formatBytes(e.normalizedBytes)}\n" +
+                        "Estimated final pack    ${formatBytes(e.predictedFinalBytes)}\n" +
+                        "Target per part         ${formatBytes(e.targetPartBytes)}\n" +
+                        "Expected                ~${e.predictedParts} part" +
+                        (if (e.predictedParts == 1) "" else "s"),
                     style = MaterialTheme.typography.bodySmall,
                     color = ProcurementColors.TextSecondary
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Sizes are estimated from the source documents, so the actual part " +
-                        "count can differ. A document is never split across parts.",
+                    "The target applies to the finished file you upload, not to the " +
+                        "original documents. Parts are packed just under the target. A " +
+                        "document is never split across parts.",
                     style = MaterialTheme.typography.labelSmall,
                     color = ProcurementColors.TextTertiary
                 )

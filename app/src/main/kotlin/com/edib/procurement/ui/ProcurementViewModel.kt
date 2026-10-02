@@ -26,9 +26,9 @@ import com.edib.procurement.aipack.AiPackOrigin
 import com.edib.procurement.aipack.AiPackRequest
 import com.edib.procurement.aipack.MultipartResult
 import com.edib.procurement.aipack.CorpusValidator
-import com.edib.procurement.aipack.PackEstimate
 import com.edib.procurement.aipack.PackOutputMode
 import com.edib.procurement.aipack.PackSplitConfig
+import com.edib.procurement.aipack.PackSizeEstimator
 import com.edib.procurement.aipack.formatBytes
 import com.edib.procurement.aipack.PackInclude
 import com.edib.procurement.aipack.PackPreview
@@ -722,9 +722,14 @@ val linkGroupPages: StateFlow<PagingData<LinkTargetRow>> =
      * Uses only database sizes, so it is cheap enough to recompute whenever the
      * target changes while the configuration sheet is open.
      */
-    fun estimateSplit(scope: PackScope, targetPartBytes: Long, onReady: (PackEstimate) -> Unit) {
+    fun estimateSplit(
+        scope: PackScope,
+        targetPartBytes: Long,
+        include: PackInclude = PackInclude(),
+        onReady: (PackSizeEstimator.Prediction) -> Unit
+    ) {
         viewModelScope.launch {
-            val e = repo.estimatePack(scope, targetPartBytes)
+            val e = repo.estimatePack(scope, targetPartBytes, include)
             onReady(e)
         }
     }
@@ -951,6 +956,47 @@ val linkGroupPages: StateFlow<PagingData<LinkTargetRow>> =
         ExternalDocumentOpener.openUri(
             getApplication(), uri, if (pack.fileName.endsWith(".zip")) "zip" else "md"
         )
+    }
+
+    /** One file belonging to a multipart export, for the history parts sheet. */
+    data class ExportPart(val fileName: String, val path: String, val isIndex: Boolean, val bytes: Long)
+
+    /**
+     * The index and every part of a stored multipart export.
+     *
+     * Part files are found by the export's own stem, which is how they were
+     * written, so this works from history rather than only during creation.
+     */
+    fun exportParts(pack: com.edib.procurement.database.AiPackEntity): List<ExportPart> {
+        val index = java.io.File(pack.absolutePath)
+        val dir = index.parentFile ?: return emptyList()
+        val stem = index.name.removeSuffix("_INDEX.md")
+        val suffix = Regex("_\\d{2,3}\\.(zip|md)$")
+        val parts = dir.listFiles()
+            ?.filter { f -> f.name != index.name && suffix.find(f.name)?.let {
+                f.name == stem + it.value
+            } ?: false }
+            ?.sortedBy { it.name }
+            ?.map { ExportPart(it.name, it.absolutePath, false, it.length()) }
+            ?: emptyList()
+        return listOf(
+            ExportPart(index.name, index.absolutePath, true, index.length())
+        ) + parts
+    }
+
+    /** Share the index and every part of a stored export in one action. */
+    fun shareAllParts(pack: com.edib.procurement.database.AiPackEntity) {
+        val files = exportParts(pack).map { java.io.File(it.path) }.filter { it.exists() }
+        if (files.isEmpty()) {
+            say("Those files are no longer available", isError = true)
+            return
+        }
+        val uris = files.mapNotNull { repo.shareUriFor(it) }
+        if (uris.isEmpty()) {
+            say("Those files are no longer available", isError = true)
+            return
+        }
+        ExternalDocumentOpener.shareFiles(getApplication(), uris, pack.scopeName)
     }
 
     fun sharePackFile(pack: com.edib.procurement.database.AiPackEntity) {

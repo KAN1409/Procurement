@@ -109,7 +109,7 @@ class MultipartArtifactTest {
         val md = ZipFile(pf.file).use { z ->
             z.getInputStream(z.getEntry("AI_PACK.md")).bufferedReader().readText()
         }
-        assertTrue(md.contains("SINGLE_SOURCE_EXCEEDS_TARGET"))
+        assertTrue(md.contains(PackSplitter.OVERSIZED_SINGLE_SOURCE))
         assertTrue("the body must survive whole", md.contains(body))
     }
 

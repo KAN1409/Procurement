@@ -49,7 +49,6 @@ import com.edib.procurement.aipack.AiPackBuilder
 import com.edib.procurement.aipack.CorpusValidator
 import com.edib.procurement.aipack.MultipartAiPackBuilder
 import com.edib.procurement.aipack.MultipartResult
-import com.edib.procurement.aipack.PackEstimate
 import com.edib.procurement.aipack.PackSizeEstimator
 import com.edib.procurement.aipack.PackSplitConfig
 import com.edib.procurement.aipack.StaleMultipartCleanup
@@ -686,18 +685,64 @@ fun homeCounts(): Flow<HomeCounts> {
         builder.build(scope, config, include, detail, onProgress)
     }
 
-    /** Cheap pre-generation size estimate, from database sizes only. */
-    suspend fun estimatePack(scope: PackScope, targetPartBytes: Long): PackEstimate =
-        withContext(Dispatchers.IO) {
-            val entries = packDao.entriesOfGroups(scope.groupIds)
-            val entryIds = entries.map { it.id }
-            val linked = packDao.linkedDocuments(scope.groupIds, entryIds)
-            val explicit =
-                if (scope.documentIds.isEmpty()) emptyList()
-                else packDao.documentsByIds(scope.documentIds)
-            val docs = (linked + explicit).associateBy { it.id }.values.toList()
-            PackSizeEstimator.estimate(docs, entries.size, targetPartBytes)
+    /**
+     * Predicts the final AI Pack size before generating it.
+     *
+     * The prediction is in the units the user uploads: normalized text is
+     * produced once, measured, DEFLATE-measured and then discarded. That costs
+     * one extraction pass to make the number trustworthy, and the generation
+     * afterwards still extracts exactly once itself - this is an advisory
+     * preview, never a substitute for the real build.
+     */
+    suspend fun estimatePack(
+        scope: PackScope,
+        targetPartBytes: Long,
+        include: PackInclude = PackInclude(),
+        detail: PackDetail = PackDetail.COMPACT
+    ): PackSizeEstimator.Prediction = withContext(Dispatchers.IO) {
+        val entries = packDao.entriesOfGroups(scope.groupIds)
+        val entryIds = entries.map { it.id }
+        val linked = packDao.linkedDocuments(scope.groupIds, entryIds)
+        val explicit =
+            if (scope.documentIds.isEmpty()) emptyList()
+            else packDao.documentsByIds(scope.documentIds)
+        val docs = (linked + explicit).associateBy { it.id }.values.toList()
+        val links = packDao.linksForDocuments(docs.map { it.id }).groupBy { it.documentId }
+
+        val spool = com.edib.procurement.aipack.NormalizedSpool(
+            File(appContext.filesDir, "spool-estimate")
+        )
+        try {
+            val single = AiPackBuilder(appContext, packDao, aiPackDao, appContext.filesDir)
+            docs.forEachIndexed { i, d ->
+                val f = spool.create(d.id, "EST")
+                val sink = com.edib.procurement.aipack.PackTextWriter(
+                    f.outputStream().buffered(64 * 1024)
+                )
+                single.writeSourceBlock(
+                    sink, d, links[d.id].orEmpty(), "EST", include, detail,
+                    onSource = {}
+                )
+                sink.flush()
+                sink.close()
+                spool.register(d.id, "EST", f)
+            }
+            val meta = com.edib.procurement.aipack.normalizedTextOverheadEstimate(
+                packDao.groupsByIds(scope.groupIds).size, entries.size
+            )
+            val metaBytes = (meta.groupHeader + meta.entry) *
+                (packDao.groupsByIds(scope.groupIds).size + entries.size)
+            PackSizeEstimator.predict(
+                originalBytes = docs.sumOf { it.size },
+                normalizedBytes = spool.totalNormalizedBytes + metaBytes * 3,
+                predictedCompressedBytes = spool.totalPredictedZipBytes + metaBytes,
+                targetPartBytes = targetPartBytes
+            )
+        } finally {
+            // The spool is scratch space; a preview must leave nothing behind.
+            spool.clear()
         }
+    }
 
     suspend fun packPreview(scope: PackScope): PackPreview = withContext(Dispatchers.IO) {
         val groups = packDao.groupsByIds(scope.groupIds)

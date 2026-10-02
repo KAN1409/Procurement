@@ -31,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import com.edib.procurement.aipack.formatBytes
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,6 +68,7 @@ fun AiPackHistoryScreen(vm: ProcurementViewModel) {
     var confirmAll by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<AiPackEntity?>(null) }
     var detailsOf by remember { mutableStateOf<AiPackEntity?>(null) }
+    var partsOf by remember { mutableStateOf<AiPackEntity?>(null) }
 
     Column(
         Modifier
@@ -105,6 +107,9 @@ fun AiPackHistoryScreen(vm: ProcurementViewModel) {
                         pack = pack,
                         onOpen = { vm.openPackFile(pack) },
                         onShare = { vm.sharePackFile(pack) },
+                        onParts = if (pack.scopeType == "MULTIPART") {
+                            { partsOf = pack }
+                        } else null,
                         onDetails = { detailsOf = pack },
                         onDelete = { pendingDelete = pack }
                     )
@@ -166,6 +171,10 @@ fun AiPackHistoryScreen(vm: ProcurementViewModel) {
         )
     }
 
+    partsOf?.let { pack ->
+        ExportPartsSheet(vm = vm, pack = pack, onDismiss = { partsOf = null })
+    }
+
     detailsOf?.let { pack ->
         PackDetailsSheet(vm = vm, pack = pack, onDismiss = { detailsOf = null })
     }
@@ -176,6 +185,8 @@ private fun PackHistoryCard(
     pack: AiPackEntity,
     onOpen: () -> Unit,
     onShare: () -> Unit,
+    /** Multipart exports offer their index and every part individually. */
+    onParts: (() -> Unit)? = null,
     onDetails: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -235,27 +246,103 @@ private fun PackHistoryCard(
         }
 
         Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Five actions will not fit one line on a narrow phone, and a squeezed
+        // label is an unusable control. Two rows keeps every action readable.
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             Button(
                 onClick = onOpen,
                 enabled = exists,
                 colors = ButtonDefaults.buttonColors(containerColor = ProcurementColors.AccentRed),
-                shape = RoundedCornerShape(2.dp)
+                shape = RoundedCornerShape(2.dp),
+                modifier = Modifier.weight(1f)
             ) { Text("OPEN", style = MaterialTheme.typography.labelMedium) }
-            TextButton(onClick = onShare, enabled = exists) {
+            TextButton(onClick = onShare, enabled = exists, modifier = Modifier.weight(1f)) {
                 Text("SHARE", style = MaterialTheme.typography.labelMedium,
                     color = ProcurementColors.TextPrimary)
             }
-            TextButton(onClick = onDetails) {
+            if (onParts != null) {
+                TextButton(onClick = onParts, modifier = Modifier.weight(1f)) {
+                    Text("PARTS", style = MaterialTheme.typography.labelMedium,
+                        color = ProcurementColors.StatusInfo)
+                }
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            TextButton(onClick = onDetails, modifier = Modifier.weight(1f)) {
                 Text("DETAILS", style = MaterialTheme.typography.labelMedium,
                     color = ProcurementColors.TextSecondary)
             }
-            TextButton(onClick = onDelete) {
-                Text("DELETE", style = MaterialTheme.typography.labelMedium,
+            TextButton(onClick = onDelete, modifier = Modifier.weight(1f)) {
+                Text("DELETE EXPORT", style = MaterialTheme.typography.labelMedium,
                     color = ProcurementColors.TextTertiary)
             }
         }
     }
+}
+
+/** PARTS: the index and every part of a stored multipart export, each shareable. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExportPartsSheet(
+    vm: ProcurementViewModel,
+    pack: AiPackEntity,
+    onDismiss: () -> Unit
+) {
+    val parts = remember(pack.id) { vm.exportParts(pack) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ProcurementColors.Graphite850,
+        titleContentColor = ProcurementColors.TextPrimary,
+        textContentColor = ProcurementColors.TextSecondary,
+        title = { Text("Parts (${parts.size})", style = MaterialTheme.typography.titleMedium) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                parts.forEach { p ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                p.fileName,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = ProcurementColors.TextPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                (if (p.isIndex) "INDEX · " else "") +
+                                    formatBytes(p.bytes) +
+                                    if (!java.io.File(p.path).exists()) " · FILE MISSING" else "",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = ProcurementColors.TextTertiary
+                            )
+                        }
+                        TextButton(
+                            onClick = { vm.sharePartFile(p.path) },
+                            enabled = java.io.File(p.path).exists()
+                        ) {
+                            Text("SHARE", color = ProcurementColors.StatusInfo)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Button(
+                    onClick = { vm.shareAllParts(pack) },
+                    colors = ButtonDefaults.buttonColors(containerColor = ProcurementColors.AccentRed),
+                    shape = RoundedCornerShape(2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("SHARE ALL (INDEX + ${parts.size - 1} PARTS)") }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
 }
 
 /** PACK DETAILS: what went in, what came out, and how each source fared. */

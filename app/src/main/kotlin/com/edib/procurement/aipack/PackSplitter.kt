@@ -62,7 +62,15 @@ object PackSplitter {
             get() = if (isOversized) SINGLE_SOURCE_EXCEEDS_TARGET else null
     }
 
-    const val SINGLE_SOURCE_EXCEEDS_TARGET = "SINGLE_SOURCE_EXCEEDS_TARGET"
+    /**
+     * Reported when one normalized source on its own is larger than the target.
+     *
+     * The document is placed whole in its own part; it is never truncated.
+     */
+    const val OVERSIZED_SINGLE_SOURCE = "OVERSIZED_SINGLE_SOURCE"
+
+    /** Backwards-compatible alias used by earlier phase 4 manifests. */
+    const val SINGLE_SOURCE_EXCEEDS_TARGET = OVERSIZED_SINGLE_SOURCE
 
     /**
      * Greedy bin packing over logical units, preserving the input order.
@@ -73,6 +81,10 @@ object PackSplitter {
      * larger than the target is never truncated: it becomes an oversized part of
      * its own and is flagged, so the UI can warn instead of silently losing data.
      *
+     * [targetPartBytes] is the user's chosen FINAL zip size. The planner packs
+     * against a soft ceiling below it, leaving room for ZIP structure and the
+     * manifest, so a part lands near but under the number the user picked.
+     *
      * A group is kept together when practical: once a part is started for a new
      * group, the remaining units of the previous group are flushed first. If one
      * group on its own is bigger than the target, its units simply continue into
@@ -82,6 +94,7 @@ object PackSplitter {
         require(targetPartBytes > 0) { "target part size must be positive" }
         if (units.isEmpty()) return emptyList()
 
+        val ceiling = PackSizeEstimator.softCeiling(targetPartBytes)
         val parts = ArrayList<Part>()
         var current = ArrayList<Unit>()
         var currentBytes = 0L
@@ -102,12 +115,12 @@ object PackSplitter {
             // part would actually not fit anyway. Flushing purely because the
             // group id changed would split a scope that comfortably fits in one
             // part, which is worse than a little interleaving.
-            val wouldOverflow = current.isNotEmpty() && currentBytes + u.bytes > targetPartBytes
+            val wouldOverflow = current.isNotEmpty() && currentBytes + u.bytes > ceiling
             if (startsNewGroup && wouldOverflow) flush()
 
             // A unit bigger than the whole target gets its own part rather than
             // being truncated or split.
-            if (u.bytes > targetPartBytes && u.kind == Unit.Kind.SOURCE) {
+            if (u.bytes > ceiling && u.kind == Unit.Kind.SOURCE) {
                 flush()
                 current.add(u)
                 currentBytes = u.bytes
@@ -118,7 +131,7 @@ object PackSplitter {
                 continue
             }
 
-            if (current.isNotEmpty() && currentBytes + u.bytes > targetPartBytes) flush()
+            if (current.isNotEmpty() && currentBytes + u.bytes > ceiling) flush()
 
             current.add(u)
             currentBytes += u.bytes

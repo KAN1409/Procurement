@@ -35,17 +35,41 @@ class PackSplitterTest {
     }
 
     @Test
-    fun `content exactly at the target stays in one part`() {
+    fun `content at the target still fits under the safety margin`() {
+        // The target is what the user picks; the planner aims slightly below it
+        // so a part never lands exactly on an upload limit.
         val units = listOf(unit("a", 500), unit("b", 500))
         val parts = PackSplitter.plan(units, 1000)
-        assertEquals("500 + 500 == target must fit", 1, parts.size)
+        assertEquals("500 + 500 == target, inside the 95% ceiling", 1, parts.size)
     }
 
     @Test
-    fun `one byte over the target starts a second part`() {
-        val units = listOf(unit("a", 500), unit("b", 501))
-        val parts = PackSplitter.plan(units, 1000)
-        assertEquals(2, parts.size)
+    fun `content past the safety margin starts a second part`() {
+        // 500 + 500 = 1000 exceeds the 950 ceiling, so it splits even though it
+        // is not over the nominal target.
+        val units = listOf(unit("a", 500), unit("b", 500))
+        val plan = PackSplitter.plan(units, 1000)
+        assertEquals(1, plan.size)   // exactly at target: still one part
+
+        val two = listOf(unit("a", 500), unit("b", 451), unit("c", 500))
+        assertTrue(
+            "crossing the ceiling must start a new part",
+            PackSplitter.plan(two, 1000).size > 1
+        )
+    }
+
+    @Test
+    fun `the ceiling is what the planner packs against`() {
+        val target = 100_000L
+        val ceiling = PackSizeEstimator.softCeiling(target)
+        assertEquals((target * 0.95).toLong(), ceiling)
+        // Units summing to exactly the ceiling fit in one part...
+        val half = ceiling / 2
+        assertEquals(1, PackSplitter.plan(listOf(unit("a", half), unit("b", half)), target).size)
+        // ...and going one byte past it starts a second part.
+        assertTrue(
+            PackSplitter.plan(listOf(unit("a", half), unit("b", half + 1)), target).size > 1
+        )
     }
 
     @Test
@@ -103,7 +127,7 @@ class PackSplitterTest {
         val hugePart = parts.single { p -> p.units.any { it.key == "huge" } }
         assertEquals("the oversized source must be alone", 1, hugePart.units.size)
         assertEquals(
-            PackSplitter.SINGLE_SOURCE_EXCEEDS_TARGET, hugePart.oversizedReason
+            PackSplitter.OVERSIZED_SINGLE_SOURCE, hugePart.oversizedReason
         )
         assertEquals(5000, hugePart.estimatedBytes)
     }
