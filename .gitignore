@@ -23,3 +23,17 @@ app/files/
 
 # Local build helper wrapper
 /aapt2-wrapper.sh
+
+# Genuine business documents and any AI Pack generated from them must never
+# enter the repository. The real corpus lives on the device under
+# /storage/emulated/0/Archive and is referenced read-only at validation time.
+Archive/
+RealCorpus/
+PdfCorpus/
+ProcTest/
+StressRepo/
+ProcurementDocs/
+*_AI_PACK_*.zip
+*_AI_PACK_*.md
+ai-packs/
+aipacks/

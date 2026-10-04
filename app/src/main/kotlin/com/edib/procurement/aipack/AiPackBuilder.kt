@@ -21,6 +21,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
 /**
@@ -124,7 +125,7 @@ class AiPackBuilder(
                                 }
                                 ExtractionStatus.SUCCESS
                             }
-                            "docx" -> emitDocx(text, input)
+                            "docx" -> emitDocx(text, input, doc.documentUri)
                             else -> {
                                 emitPlainText(text, input, ext)
                                 ExtractionStatus.SUCCESS
@@ -374,7 +375,7 @@ class AiPackBuilder(
                                     emitPlainText(text, input, ext)
                                     ExtractionStatus.SUCCESS
                                 }
-                                "docx", "doc" -> emitDocx(text, input)
+                                "docx", "doc" -> emitDocx(text, input, doc.documentUri)
                                 else -> {
                                     detailText = "no extractor for .$ext"
                                     ExtractionStatus.UNSUPPORTED
@@ -626,11 +627,52 @@ class AiPackBuilder(
         workbookReader.read(input, writer, useTsv = true)
     }
 
+    /**
+     * True when the source really is an OOXML package containing a Word part.
+     *
+     * Decided by inspecting the container, never by the file extension: a file
+     * named .doc can be OOXML (Word happily saves that way) and a file named
+     * .docx can be something else entirely.
+     */
+    private fun inputLooksLikeOoxml(documentUri: String): Boolean = runCatching {
+        context.contentResolver.openInputStream(Uri.parse(documentUri))?.use { ins ->
+            ZipInputStream(ins.buffered()).use { z ->
+                var e: java.util.zip.ZipEntry? = z.nextEntry
+                while (e != null) {
+                    if (e.name.equals("word/document.xml", ignoreCase = true)) return@use true
+                    e = z.nextEntry
+                }
+            }
+        }
+        false
+    }.getOrDefault(true)
+
     /** Returns the status the extractor actually reached. */
-    private fun emitDocx(text: PackTextWriter, input: InputStream): ExtractionStatus {
+    private fun emitDocx(
+        text: PackTextWriter,
+        input: InputStream,
+        documentUri: String
+    ): ExtractionStatus {
         val doc = runCatching { docxReader.read(input) }.getOrNull()
+
+        // A file that is not a DOCX container at all must NOT be reported as
+        // image-based. Legacy Word 97-2003 (.doc) is an OLE2 compound file; it
+        // opens as a ZIP only by accident and contains no word/document.xml, so
+        // calling it "OCR_REQUIRED" would send the reader to OCR for a document
+        // OCR can never help with. UNSUPPORTED says the truth: the format is not
+        // readable here.
         if (doc == null || doc.isEmpty) {
-            // A DOCX with no text runs is an image-based document.
+            val ooxml = inputLooksLikeOoxml(documentUri)
+            if (!ooxml) {
+                text.line("Extraction: UNSUPPORTED")
+                text.line(
+                    "(not an OOXML Word document. Legacy Word 97-2003 (.doc) is " +
+                        "a binary format this app does not read; converting it to " +
+                        ".docx or PDF would allow extraction.)"
+                )
+                return ExtractionStatus.UNSUPPORTED
+            }
+            // A real DOCX with no text runs IS an image-based document.
             text.line("Extraction: OCR_REQUIRED")
             text.line("(no text runs found; the document is likely image-based)")
             return ExtractionStatus.OCR_REQUIRED
