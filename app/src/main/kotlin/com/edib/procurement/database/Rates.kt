@@ -197,6 +197,22 @@ fun normalizeRateUnit(value: String): String {
     val compact = value
         .trim()
         .lowercase(Locale.ROOT)
+        .map { ch ->
+            when (ch) {
+                '٠' -> '0'
+                '١' -> '1'
+                '٢' -> '2'
+                '٣' -> '3'
+                '٤' -> '4'
+                '٥' -> '5'
+                '٦' -> '6'
+                '٧' -> '7'
+                '٨' -> '8'
+                '٩' -> '9'
+                else -> ch
+            }
+        }
+        .joinToString("")
         .replace(Regex("\\s+"), " ")
         .replace("²", "2")
         .replace("³", "3")
@@ -206,10 +222,10 @@ fun normalizeRateUnit(value: String): String {
 
     return when (compact) {
         "m2", "sqm", "sq m", "square meter", "square meters",
-        "square metre", "square metres", "م2", "متر مربع" -> "m2"
+        "square metre", "square metres", "م2", "م²", "متر مربع", "مترمربع" -> "m2"
 
         "m3", "cum", "cu m", "cubic meter", "cubic meters",
-        "cubic metre", "cubic metres", "م3", "متر مكعب" -> "m3"
+        "cubic metre", "cubic metres", "م3", "م³", "متر مكعب", "مترمكعب" -> "m3"
 
         "lm", "l m", "linear meter", "linear meters",
         "linear metre", "linear metres", "م ط", "متر طولي" -> "lm"
