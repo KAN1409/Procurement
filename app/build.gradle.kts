@@ -119,10 +119,14 @@ dependencies {
     // Tesseract OCR with Arabic + English support (via Tesseract4Android)
     implementation("cz.adaptech.tesseract4android:tesseract4android-openmp:4.9.0")
 
-    // Test-only. The procurement unit tests are plain JVM: grouping,
-    // normalisation, matching and formatting. No Android runtime, no mocking
-    // framework and no Arch test rules are needed.
+    // Test-only. Most procurement tests are plain JVM. The migration tests
+    // use Robolectric because Room needs an Android Context even though the
+    // gate deliberately avoids an emulator.
     testImplementation("junit:junit:4.13.2")
+    // Room migration tests execute on the JVM through Robolectric so CI can
+    // validate Android database behavior without an emulator.
+    testImplementation("androidx.test:core:1.5.0")
+    testImplementation("org.robolectric:robolectric:4.13.2")
     // The real org.json, so manifest compatibility is asserted by parsing the
     // output rather than by string matching. The android.jar stub throws instead.
     testImplementation("org.json:json:20240303")

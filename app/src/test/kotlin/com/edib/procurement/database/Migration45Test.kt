@@ -11,11 +11,14 @@ import org.junit.Assert.*
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
 /**
  * Test for MIGRATION_4_5 - database v5 schema.
  * Verifies that the additive migration adds all required content indexing fields.
  */
+@RunWith(RobolectricTestRunner::class)
 class Migration45Test {
 
     private lateinit var db: ProcurementDatabase
