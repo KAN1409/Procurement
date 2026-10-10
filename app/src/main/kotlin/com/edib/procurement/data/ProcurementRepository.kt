@@ -267,7 +267,7 @@ private suspend fun masterIdentity(): MasterWorkbookIdentity {
         takePersistableReadPermission(uri)
         putSetting(KEY_TREE_URI, uri.toString())
         putSetting(KEY_TREE_NAME, displayName?.takeIf { it.isNotBlank() } ?: friendlyNameFromId(uri))
-        scanner.scan(uri, deleteExisting = true, master = masterIdentity())
+        scanner.scan(uri, master = masterIdentity())
     }
 
     suspend fun recordScanFinished(indexed: Int) = withContext(Dispatchers.IO) {
@@ -292,7 +292,6 @@ private suspend fun masterIdentity(): MasterWorkbookIdentity {
         }
         return scanner.scan(
             Uri.parse(stored),
-            deleteExisting = true,
             master = masterIdentity()
         )
     }
@@ -678,11 +677,21 @@ fun homeCounts(): Flow<HomeCounts> {
         config: PackSplitConfig,
         include: PackInclude,
         detail: PackDetail,
-        onProgress: (PackProgress) -> Unit
+        onProgress: (PackProgress) -> Unit,
+        /** True when the plan resolved to a single part. */
+        onCollapsedToSingle: suspend () -> Unit
     ): MultipartResult = withContext(Dispatchers.IO) {
-        val single = AiPackBuilder(appContext, packDao, aiPackDao, appContext.filesDir)
-        val builder = MultipartAiPackBuilder(appContext, packDao, aiPackDao, appContext.filesDir, single)
-        builder.build(scope, config, include, detail, onProgress)
+        val single = AiPackBuilder(appContext, packDao, aiPackDao, db.documentDao(), appContext.filesDir)
+        val builder = MultipartAiPackBuilder(appContext, packDao, aiPackDao, db.documentDao(), appContext.filesDir, single)
+        val result = builder.build(scope, config, include, detail, onProgress)
+        // "Export: MULTIPART / PART 01 of 1" is meaningless. When the planner
+        // produced exactly one part there is nothing to split, so the export is
+        // emitted as an ordinary single pack instead of a one-part multipart
+        // lifecycle with its own INDEX.
+        if (result.partFileNames.size <= 1) {
+            onCollapsedToSingle()
+        }
+        result
     }
 
     /**
@@ -713,7 +722,7 @@ fun homeCounts(): Flow<HomeCounts> {
             File(appContext.filesDir, "spool-estimate")
         )
         try {
-            val single = AiPackBuilder(appContext, packDao, aiPackDao, appContext.filesDir)
+            val single = AiPackBuilder(appContext, packDao, aiPackDao, db.documentDao(), appContext.filesDir)
             docs.forEachIndexed { i, d ->
                 val f = spool.create(d.id, "EST")
                 val sink = com.edib.procurement.aipack.PackTextWriter(
@@ -768,14 +777,14 @@ fun homeCounts(): Flow<HomeCounts> {
     }
 
 /** Builds a pack. Sources are only ever read. */
-suspend fun buildPack(
+    suspend fun buildPack(
         scope: PackScope,
         include: PackInclude,
         detail: PackDetail,
         zip: Boolean,
-        onProgress: (PackProgress) -> Unit
+        onProgress: (PackProgress) -> Unit = {}
     ): PackResult = withContext(Dispatchers.IO) {
-        AiPackBuilder(appContext, packDao, db.aiPackDao(), appContext.filesDir)
+        AiPackBuilder(appContext, packDao, db.aiPackDao(), db.documentDao(), appContext.filesDir)
             .build(scope, include, detail, zip, onProgress)
     }
 
@@ -956,6 +965,26 @@ suspend fun buildPack(
         withContext(Dispatchers.IO) {
             followUpDao.allDocumentIds(query.trim())
         }
+
+    // ------------------------------------------------------------ content indexing
+
+    /** Gets the content indexer instance. */
+    val contentIndexer: ContentIndexer = ContentIndexer(appContext, documentDao)
+
+    /** Gets the content indexing service instance. */
+    val contentIndexingService: ContentIndexingService = ContentIndexingService(appContext, documentDao, contentIndexer)
+
+    /** Starts content indexing for all NOT_INDEXED and STALE documents. */
+    fun startContentIndexing() = contentIndexingService.start()
+
+    /** Cancels the current content indexing operation. */
+    fun cancelContentIndexing() = contentIndexingService.cancel()
+
+    /** Runs OCR fallback for documents that need it. */
+    fun runOcrFallback() = contentIndexingService.runOcrFallback()
+
+    /** Current progress of content indexing. */
+    val contentIndexingProgress = contentIndexingService.progress
 
     /**
      * Groups of a project, walked a page at a time.

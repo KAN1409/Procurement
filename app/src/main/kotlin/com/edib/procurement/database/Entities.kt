@@ -203,6 +203,18 @@ data class ContractorAliasEntity(
 )
 
 /**
+ * Content indexing state for a document.
+ */
+enum class ContentState {
+    NOT_INDEXED,
+    INDEXED,
+    NEEDS_OCR,
+    STALE,
+    UNSUPPORTED,
+    FAILED
+}
+
+/**
  * One indexed file in the user's document tree. Content is never parsed during
  * a normal scan — only metadata is stored, and SHA-256 is filled in lazily.
  */
@@ -215,7 +227,9 @@ data class ContractorAliasEntity(
         Index(value = ["matchStemKey"]),
         Index(value = ["relativePath"]),
         Index(value = ["extension"]),
-        Index(value = ["isMissing"])
+        Index(value = ["isMissing"]),
+        Index(value = ["contentState"]),
+        Index(value = ["indexedAt"])
     ]
 )
 data class DocumentEntity(
@@ -242,7 +256,23 @@ data class DocumentEntity(
     /** Empty until something actually needs content identity. */
     val lazySha256: String? = null,
     val indexedAt: Long,
-    val isMissing: Boolean = false
+    val isMissing: Boolean = false,
+    /** Extracted text content for search (PDF text, OCR results, etc.) */
+    val extractedText: String = "",
+    /** Content indexing state - separate from metadata scan */
+    val contentState: ContentState = ContentState.NOT_INDEXED,
+    /** Method used for extraction: "pdfbox", "tesseract", "docx", "poi", "text", "unsupported" */
+    val extractionMethod: String? = null,
+    /** When extraction was performed */
+    val extractedAt: Long? = null,
+    /** Version of the extractor (e.g., "pdfbox-2.0.27", "tesseract-4.1.1") */
+    val extractorVersion: String? = null,
+    /** Error message if extraction failed */
+    val extractionError: String? = null,
+    /** Size of source file at time of extraction */
+    val sourceSizeAtExtraction: Long? = null,
+    /** Last-modified of source file at time of extraction */
+    val sourceModifiedAtExtraction: Long? = null
 )
 
 /**

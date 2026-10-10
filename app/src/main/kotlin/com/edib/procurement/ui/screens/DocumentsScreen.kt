@@ -21,6 +21,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -31,7 +32,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.edib.procurement.matching.SnippetGenerator
 import com.edib.procurement.database.DocumentListRow
 import com.edib.procurement.database.UnlinkedDocumentRow
 import com.edib.procurement.ui.ProcurementViewModel
@@ -42,6 +45,7 @@ import com.edib.procurement.ui.components.SelectionActionBar
 import com.edib.procurement.ui.SelectScope
 import com.edib.procurement.ui.components.formatSize
 import com.edib.procurement.ui.theme.ProcurementColors
+import kotlinx.coroutines.flow.combine
 
 /** DOCUMENTS: the indexed repository, opened externally. */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
@@ -118,6 +122,64 @@ fun DocumentsScreen(
                 }
             }
             Spacer(Modifier.height(6.dp))
+
+            // Content indexing action with progress
+            val indexingProgress by vm.contentIndexingProgress.collectAsStateWithLifecycle()
+            if (indexingProgress.isRunning) {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = ProcurementColors.AccentRed
+                        )
+                        Text(
+                            "Indexing: ${indexingProgress.currentFile}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = ProcurementColors.TextSecondary
+                        )
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = { vm.cancelContentIndexing() }) {
+                            Text("Cancel", style = MaterialTheme.typography.labelMedium, color = ProcurementColors.AccentRedBright)
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text("Indexed: ${indexingProgress.indexed}", style = MaterialTheme.typography.labelSmall, color = ProcurementColors.TextTertiary)
+                        Text("Needs OCR: ${indexingProgress.needsOcr}", style = MaterialTheme.typography.labelSmall, color = ProcurementColors.StatusWarn)
+                        Text("Unsupported: ${indexingProgress.unsupported}", style = MaterialTheme.typography.labelSmall, color = ProcurementColors.TextTertiary)
+                        Text("Failed: ${indexingProgress.failed}", style = MaterialTheme.typography.labelSmall, color = ProcurementColors.StatusError)
+                        Text("Remaining: ${indexingProgress.remaining}", style = MaterialTheme.typography.labelSmall, color = ProcurementColors.TextTertiary)
+                    }
+                    if (indexingProgress.error != null) {
+                        Text("Error: ${indexingProgress.error}", style = MaterialTheme.typography.labelSmall, color = ProcurementColors.StatusError)
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+            } else if (config.treeUri != null) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { vm.startContentIndexing() },
+                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                            contentColor = ProcurementColors.AccentRed
+                        )
+                    ) { Text("Index Content") }
+                    TextButton(onClick = { vm.runOcrFallback() }) {
+                        Text("OCR Fallback", style = MaterialTheme.typography.labelMedium, color = ProcurementColors.AccentRedBright)
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+            }
         }
 
         LazyColumn(
@@ -145,7 +207,7 @@ fun DocumentsScreen(
                             }
                         )
                 ) {
-                    DocumentRow(doc) {
+                    DocumentRow(doc, query) {
                         if (selectionActive) vm.toggleSelection(doc.id)
                         else vm.openDocument(doc.documentUri, doc.extension, doc.mimeType)
                     }
@@ -185,7 +247,16 @@ fun DocumentsScreen(
 private const val PAGE = 200
 
 @Composable
-private fun DocumentRow(doc: DocumentListRow, onOpen: () -> Unit) {
+private fun DocumentRow(doc: DocumentListRow, query: String, onOpen: () -> Unit) {
+    val snippet = SnippetGenerator.generateDocumentSnippet(
+        doc.displayName,
+        doc.relativePath,
+        doc.extractedText,
+        query
+    )
+    val hasContentMatch = snippet != null && snippet.query.isNotBlank() &&
+        doc.extractedText.lowercase().contains(query.lowercase())
+
     Row(
         Modifier
             .fillMaxWidth()
@@ -210,6 +281,27 @@ private fun DocumentRow(doc: DocumentListRow, onOpen: () -> Unit) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            if (hasContentMatch) {
+                Spacer(Modifier.height(3.dp))
+                // Show the snippet with highlighted match
+                val annotatedString = buildAnnotatedString {
+                    append(snippet.text.substring(0, snippet.matchStart))
+                    withStyle(style = SpanStyle(
+                        color = ProcurementColors.AccentRedBright,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    )) {
+                        append(snippet.text.substring(snippet.matchStart, snippet.matchEnd))
+                    }
+                    append(snippet.text.substring(snippet.matchEnd))
+                }
+                Text(
+                    text = annotatedString,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ProcurementColors.TextSecondary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
         Spacer(Modifier.width(8.dp))
         Column(horizontalAlignment = Alignment.End) {
@@ -220,6 +312,16 @@ private fun DocumentRow(doc: DocumentListRow, onOpen: () -> Unit) {
                 )
                 Spacer(Modifier.height(3.dp))
             }
+            // Show content indexing state
+            when (doc.contentState) {
+                "INDEXED" -> Chip("indexed", ProcurementColors.StatusOk)
+                "STALE" -> Chip("stale", ProcurementColors.StatusWarn)
+                "NEEDS_OCR" -> Chip("needs OCR", ProcurementColors.StatusWarn)
+                "FAILED" -> Chip("failed", ProcurementColors.StatusError)
+                "UNSUPPORTED" -> Chip("unsupported", ProcurementColors.TextTertiary)
+                else -> { /* NOT_INDEXED - don't show */ }
+            }
+            Spacer(Modifier.height(3.dp))
             Text(
                 formatSize(doc.size),
                 style = MaterialTheme.typography.labelSmall,

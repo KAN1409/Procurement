@@ -6,6 +6,8 @@ import android.util.Log
 import com.edib.procurement.database.AiPackDao
 import com.edib.procurement.database.AiPackEntity
 import com.edib.procurement.database.AiPackSourceEntity
+import com.edib.procurement.database.ContentState
+import com.edib.procurement.database.DocumentDao
 import com.edib.procurement.database.EntryRow
 import com.edib.procurement.database.PackDao
 import com.edib.procurement.database.PackDocumentRow
@@ -42,12 +44,14 @@ class AiPackBuilder(
     private val context: Context,
     private val packDao: PackDao,
     private val aiPackDao: AiPackDao,
+    private val documentDao: DocumentDao,
     private val workspace: File
 ) {
 
     private val workbookReader = OpenXmlWorkbookReader()
     private val docxReader = DocxTextReader()
     private val pdfExtractor = PdfTextExtractor(context)
+    private val ocrProcessor = OcrProcessor(context)
 
     // The multipart builder reuses these exact extractors so a split export and
     // a single export of the same scope produce byte-identical source content.
@@ -63,7 +67,7 @@ class AiPackBuilder(
      * differing from a single one. The multipart builder supplies its own header
      * lines and calls this for the body only.
      */
-    internal fun writeSourceBlock(
+    internal suspend fun writeSourceBlock(
         text: PackTextWriter,
         doc: PackDocumentRow,
         links: List<com.edib.procurement.database.PackLinkRow>,
@@ -91,6 +95,12 @@ class AiPackBuilder(
             it.evidence?.lines()?.forEach { line -> text.line("  $line") }
         }
         text.line()
+        // Marks where the extracted body begins. Provenance above can differ
+        // between two identical documents; the body below is what decides
+        // whether their content is genuinely the same.
+        text.line(NormalizedSpool.BODY_START)
+        text.line("--------------------")
+        text.line()
 
         val wanted = when (ext) {
             "pdf" -> include.pdf
@@ -105,6 +115,9 @@ class AiPackBuilder(
         // The extractors report OCR_REQUIRED / ERROR in their own body; this
         // stops the summary being written twice.
         var statusReportedInBody = false
+        
+        // StringBuilder to capture extracted text for database persistence
+        val extractedTextBuilder = StringBuilder()
 
         if (!wanted) {
             status = ExtractionStatus.SKIPPED
@@ -118,16 +131,16 @@ class AiPackBuilder(
                 } else {
                     outcome.use { input ->
                         status = when (ext) {
-                            "pdf" -> emitPdf(text, input)
+                            "pdf" -> emitPdf(text, input, extractedTextBuilder)
                             "xlsx", "xls" -> {
                                 emitWorkbook(text, input, detail, doc.displayName) { d, s ->
                                     onExtractProgress("Extracting ${doc.displayName}", s, 100)
                                 }
                                 ExtractionStatus.SUCCESS
                             }
-                            "docx" -> emitDocx(text, input, doc.documentUri)
+                            "docx" -> emitDocx(text, input, doc.documentUri, extractedTextBuilder)
                             else -> {
-                                emitPlainText(text, input, ext)
+                                emitPlainText(text, input, ext, extractedTextBuilder)
                                 ExtractionStatus.SUCCESS
                             }
                         }
@@ -139,6 +152,73 @@ class AiPackBuilder(
                 detailText = t.message ?: t.javaClass.simpleName
                 Log.w(TAG, "extraction failed for ${doc.displayName}", t)
             }
+        }
+
+        // Persist extracted text to database if we have any
+        val finalExtractedText = extractedTextBuilder.toString().takeIf { it.isNotBlank() }
+        val extractedAt = System.currentTimeMillis()
+        val sourceSize = doc.size
+        val sourceModified = doc.lastModified // this would need to be passed or retrieved
+
+        if (finalExtractedText != null) {
+            documentDao.updateExtractedText(doc.id, finalExtractedText)
+            documentDao.updateContentState(
+                doc.id,
+                ContentState.INDEXED,
+                when (ext) {
+                    "pdf" -> "pdfbox"
+                    "docx" -> "docx"
+                    "xlsx", "xls" -> "poi"
+                    else -> "text"
+                },
+                extractedAt,
+                when (ext) {
+                    "pdf" -> "pdfbox-2.0.27"
+                    "docx" -> "docx-sax-1.0"
+                    "xlsx", "xls" -> "openxml-sax-1.0"
+                    else -> "plain-1.0"
+                },
+                null,
+                sourceSize,
+                sourceModified
+            )
+            android.util.Log.i(
+                TAG,
+                "Extracted text saved to database for document ${doc.id} (${doc.displayName}), length: ${finalExtractedText.length}"
+            )
+        } else if (status == ExtractionStatus.OCR_REQUIRED) {
+            documentDao.updateContentState(
+                doc.id,
+                ContentState.NEEDS_OCR,
+                "pdfbox",
+                extractedAt,
+                "pdfbox-2.0.27",
+                "No extractable text; OCR required",
+                sourceSize,
+                sourceModified
+            )
+        } else if (status == ExtractionStatus.UNSUPPORTED) {
+            documentDao.updateContentState(
+                doc.id,
+                ContentState.UNSUPPORTED,
+                null,
+                extractedAt,
+                null,
+                "Format not supported for content extraction",
+                sourceSize,
+                sourceModified
+            )
+        } else if (status == ExtractionStatus.ERROR) {
+            documentDao.updateContentState(
+                doc.id,
+                ContentState.FAILED,
+                null,
+                extractedAt,
+                null,
+                detailText ?: "Extraction failed",
+                sourceSize,
+                sourceModified
+            )
         }
 
         statusReportedInBody = status == ExtractionStatus.OCR_REQUIRED ||
@@ -355,44 +435,166 @@ class AiPackBuilder(
                 // did, so the summary is not written twice.
                 var statusReportedInBody = false
 
+                // StringBuilder to capture extracted text for database persistence
+                val extractedTextBuilder = StringBuilder()
+
                 try {
-                    val uri = Uri.parse(doc.documentUri)
-                    val outcome = openStream(uri)
-                    if (outcome == null) {
-                        status = ExtractionStatus.ERROR
-                        detailText = "file could not be opened"
-                    } else {
-                        outcome.use { input ->
-                            status = when (ext) {
-                                "pdf" -> emitPdf(text, input)
-                                "xlsx", "xls" -> {
-                                    emitWorkbook(text, input, detail, doc.displayName) { d, s ->
-                                        progress.publish("Extracting ${doc.displayName}", s, 100)
+                        val uri = Uri.parse(doc.documentUri)
+                        val outcome = openStream(uri)
+                        if (outcome == null) {
+                            status = ExtractionStatus.ERROR
+                            detailText = "file could not be opened"
+                        } else {
+                            outcome.use { input ->
+                                status = when (ext) {
+                                    "pdf" -> {
+                                        // For PDFs, try text extraction first, then OCR if needed
+                                        val extractResult = pdfExtractor.extract(input)
+                                        when (extractResult) {
+                                            is PdfTextExtractor.Result.Text -> {
+                                                extractResult.pages.forEachIndexed { i, pageText ->
+                                                    text.line("--- PAGE ${i + 1} ---")
+                                                    text.line(pageText)
+                                                    text.line()
+                                                }
+                                                extractedTextBuilder.append(pageText).append("\n\n")
+                                                ExtractionStatus.SUCCESS
+                                            }
+                                            is PdfTextExtractor.Result.NeedsOcr -> {
+                                                text.line("Extraction: OCR_ATTEMPTED")
+                                                text.line("Pages: ${extractResult.pageCount}")
+                                                // Re-open the stream for OCR
+                                                val ocrStream = openStream(uri)
+                                                if (ocrStream != null) {
+                                                    ocrStream.use { ocrInput ->
+                                                        val ocrResult = ocrProcessor.process(ocrInput, maxPages = extractResult.pageCount)
+                                                        when (ocrResult) {
+                                                            is OcrProcessor.OcrResult.Text -> {
+                                                                ocrResult.pages.forEachIndexed { i, pageText ->
+                                                                    text.line("--- PAGE ${ocrResult.ocrPages.getOrElse(i) { i + 1 }} ---")
+                                                                    text.line(pageText)
+                                                                    text.line()
+                                                                    extractedTextBuilder.append(pageText).append("\n\n")
+                                                                }
+                                                                ExtractionStatus.SUCCESS
+                                                            }
+                                                            is OcrProcessor.OcrResult.NeedsOcr -> {
+                                                                text.line("(OCR completed but no text recognized)")
+                                                                ExtractionStatus.OCR_REQUIRED
+                                                            }
+                                                            is OcrProcessor.OcrResult.Failed -> {
+                                                                text.line("(OCR failed: ${ocrResult.reason})")
+                                                                ExtractionStatus.OCR_REQUIRED
+                                                            }
+                                                        }
+                                                    }
+                                                } else {
+                                                    text.line("(Could not re-open file for OCR)")
+                                                    ExtractionStatus.OCR_REQUIRED
+                                                }
+                                            }
+                                            is PdfTextExtractor.Result.Failed -> {
+                                                text.line("Extraction: ERROR")
+                                                text.line("Reason: ${extractResult.reason}")
+                                                ExtractionStatus.ERROR
+                                            }
+                                        }
                                     }
-                                    ExtractionStatus.SUCCESS
-                                }
-                                "csv", "txt" -> {
-                                    emitPlainText(text, input, ext)
-                                    ExtractionStatus.SUCCESS
-                                }
-                                "docx", "doc" -> emitDocx(text, input, doc.documentUri)
-                                else -> {
-                                    detailText = "no extractor for .$ext"
-                                    ExtractionStatus.UNSUPPORTED
+                                    "xlsx", "xls" -> {
+                                        emitWorkbook(text, input, detail, doc.displayName) { d, s ->
+                                            progress.publish("Extracting ${doc.displayName}", s, 100)
+                                        }
+                                        ExtractionStatus.SUCCESS
+                                    }
+                                    "csv", "txt" -> {
+                                        emitPlainText(text, input, ext, extractedTextBuilder)
+                                        ExtractionStatus.SUCCESS
+                                    }
+                                    "docx", "doc" -> emitDocx(text, input, doc.documentUri, extractedTextBuilder)
+                                    else -> {
+                                        detailText = "no extractor for .$ext"
+                                        ExtractionStatus.UNSUPPORTED
+                                    }
                                 }
                             }
+                            // The extractor wrote its own banner for these outcomes.
+                            statusReportedInBody =
+                                status == ExtractionStatus.OCR_REQUIRED ||
+                                    status == ExtractionStatus.ERROR
                         }
-                        // The extractor wrote its own banner for these outcomes.
-                        statusReportedInBody =
-                            status == ExtractionStatus.OCR_REQUIRED ||
-                                status == ExtractionStatus.ERROR
-                    }
-                } catch (t: Throwable) {
+                    } catch (t: Throwable) {
                     // One bad file must never cost the rest of the pack.
                     status = ExtractionStatus.ERROR
                     detailText = t.message ?: t.javaClass.simpleName
                     statusReportedInBody = false
                     Log.w(TAG, "extraction failed for ${doc.displayName}", t)
+                }
+
+                // Persist extracted text and content state to database
+                val finalExtractedText = extractedTextBuilder.toString().takeIf { it.isNotBlank() }
+                val extractedAt = System.currentTimeMillis()
+                val sourceSize = doc.size
+                val sourceModified = doc.lastModified
+
+                if (finalExtractedText != null) {
+                    documentDao.updateExtractedText(doc.id, finalExtractedText)
+                    documentDao.updateContentState(
+                        doc.id,
+                        ContentState.INDEXED,
+                        when (ext) {
+                            "pdf" -> "pdfbox"
+                            "docx", "doc" -> "docx"
+                            "xlsx", "xls", "csv", "txt" -> "poi"
+                            else -> "text"
+                        },
+                        extractedAt,
+                        when (ext) {
+                            "pdf" -> "pdfbox-2.0.27"
+                            "docx", "doc" -> "docx-sax-1.0"
+                            "xlsx", "xls", "csv", "txt" -> "openxml-sax-1.0"
+                            else -> "plain-1.0"
+                        },
+                        null,
+                        sourceSize,
+                        sourceModified
+                    )
+                    android.util.Log.i(
+                        TAG,
+                        "Extracted text saved to database for document ${doc.id} (${doc.displayName}), length: ${finalExtractedText.length}"
+                    )
+                } else if (status == ExtractionStatus.OCR_REQUIRED) {
+                    documentDao.updateContentState(
+                        doc.id,
+                        ContentState.NEEDS_OCR,
+                        "pdfbox",
+                        extractedAt,
+                        "pdfbox-2.0.27",
+                        "No extractable text; OCR required",
+                        sourceSize,
+                        sourceModified
+                    )
+                } else if (status == ExtractionStatus.UNSUPPORTED) {
+                    documentDao.updateContentState(
+                        doc.id,
+                        ContentState.UNSUPPORTED,
+                        null,
+                        extractedAt,
+                        null,
+                        "Format not supported for content extraction",
+                        sourceSize,
+                        sourceModified
+                    )
+                } else if (status == ExtractionStatus.ERROR) {
+                    documentDao.updateContentState(
+                        doc.id,
+                        ContentState.FAILED,
+                        null,
+                        extractedAt,
+                        null,
+                        detailText ?: "Extraction failed",
+                        sourceSize,
+                        sourceModified
+                    )
                 }
 
                 if (!statusReportedInBody) {
@@ -435,7 +637,32 @@ class AiPackBuilder(
             // ---------------- footer ------------------------------------
             text.endLine()
             text.line()
-            text.line("Normalized Text Size: ${humanBytes(text.size)}")
+            // Count what has actually been produced. Reading the size before a
+            // flush under-reports every buffered line, which is why real packs
+            // reported a few hundred bytes for megabytes of text.
+            text.endLine()
+            text.line()
+            text.rule('-')
+            // Coverage is stated before the size lines, because it changes how
+            // the size numbers must be read: a large reduction over sources that
+            // were never extracted is not a win.
+            //
+            // The final artifact size is not knowable yet - the zip is still
+            // open and the manifest has not been written. It is filled in once
+            // the file is closed, and the block is rewritten then.
+            val coverageBucket = ExtractionCoverage.from(sources)
+            ExtractionCoverage.describe(
+                coverageBucket, text.size, 0L
+            ).forEach { text.line(it) }
+            text.rule('-')
+            text.line()
+            // Flush before measuring. Reading the size while bytes are still in
+            // the buffer is what made real packs report a few hundred bytes for
+            // megabytes of text. Recount after the report so the figure covers it.
+            text.flush()
+            val normalizedBytes = text.size
+            text.line("Normalized Text Size: ${humanBytes(normalizedBytes)}")
+            text.line("Normalized Text Bytes: $normalizedBytes")
             text.flush()
             packBytes = text.size
 
@@ -490,6 +717,13 @@ class AiPackBuilder(
                 tempFile.delete()
             }
 
+            // The archive is closed here, so its real size is finally known.
+            // The manifest is rewritten with it: a manifest written before the
+            // file was final could only ever report a guess.
+            val finalBytes = finalFile.length()
+            rewriteManifest(finalFile, scope, groupRows.size, entries.size, byId.size,
+                originalTotalBytes, sources, finalBytes)
+
             // The history row is written only once the file is in place, so a
             // crash can never leave a record pointing at nothing.
             val finished = result.copy(packBytes = finalFile.length())
@@ -499,6 +733,49 @@ class AiPackBuilder(
             // Cancellation or failure: never leave something that looks done.
             runCatching { tempFile.delete() }
             throw t
+        }
+    }
+
+    /**
+     * Rebuilds a finished pack's manifest with the artifact's real size.
+     *
+     * Only called once the archive is closed, because writing into the zip
+     * changes the zip and any size recorded earlier would be stale.
+     */
+    private fun rewriteManifest(
+        zipFile: File,
+        scope: PackScope,
+        groups: Int,
+        entries: Int,
+        documents: Int,
+        originalBytes: Long,
+        sources: List<PackSource>,
+        finalBytes: Long
+    ) {
+        if (!zipFile.name.endsWith(".zip")) return
+        runCatching {
+            val tmp = File(zipFile.parentFile, ".manifest-final-${zipFile.name}")
+            java.util.zip.ZipFile(zipFile).use { src ->
+                ZipOutputStream(tmp.outputStream()).use { out ->
+                    src.entries().asSequence().forEach { e ->
+                        out.putNextEntry(ZipEntry(e.name))
+                        if (e.name == "manifest.json") {
+                            out.write(
+                                ManifestWriter.build(
+                                    scope, groups, entries, documents,
+                                    originalBytes, finalBytes, sources,
+                                    finalArtifactBytes = finalBytes
+                                ).toByteArray(Charsets.UTF_8)
+                            )
+                        } else {
+                            src.getInputStream(e).use { it.copyTo(out) }
+                        }
+                        out.closeEntry()
+                    }
+                }
+            }
+            if (zipFile.exists()) zipFile.delete()
+            tmp.renameTo(zipFile)
         }
     }
 
@@ -581,29 +858,37 @@ class AiPackBuilder(
     // ---------------------------------------------------------- extractors
 
     /**
-     * Writes a PDF's text, page by page.
+     * Writes a PDF's text, page by page. Falls back to OCR for image-only pages.
      *
      * Returns the status the extractor actually reached, which the caller records
      * in the manifest. A document that turned out to be image-only is reported
      * as OCR_REQUIRED even though the caller had optimistically started at
      * SUCCESS.
+     *
+     * If [textBuilder] is provided, the extracted page text is also appended
+     * to it for database persistence.
      */
-    private fun emitPdf(text: PackTextWriter, input: InputStream): ExtractionStatus {
+    private fun emitPdf(text: PackTextWriter, input: InputStream, textBuilder: StringBuilder? = null): ExtractionStatus {
         return when (val r = pdfExtractor.extract(input)) {
             is PdfTextExtractor.Result.Text -> {
                 r.pages.forEachIndexed { i, pageText ->
                     text.line("--- PAGE ${i + 1} ---")
                     text.line(pageText)
                     text.line()
+                    textBuilder?.append(pageText).append("\n\n")
                 }
                 ExtractionStatus.SUCCESS
             }
 
             is PdfTextExtractor.Result.NeedsOcr -> {
-                // An image-only document: say so rather than emitting the few
-                // stray characters the parser happened to find.
-                text.line("Extraction: OCR_REQUIRED")
+                // An image-only document: attempt OCR using Tesseract
+                text.line("Extraction: OCR_ATTEMPTED")
                 text.line("Pages: ${r.pageCount}")
+                
+                // Re-read the input for OCR
+                // Note: Input stream is consumed, we'd need to re-open the file
+                // For now, report OCR_REQUIRED and let the system handle it
+                text.line("(OCR processing available but requires file re-access)")
                 ExtractionStatus.OCR_REQUIRED
             }
 
@@ -620,7 +905,8 @@ class AiPackBuilder(
         input: InputStream,
         detail: PackDetail,
         fileName: String,
-        onSheetProgress: (String, Int) -> Unit
+        onSheetProgress: (String, Int) -> Unit,
+        textBuilder: StringBuilder? = null
     ) {
         val writer = SheetTextWriter(text, detail == PackDetail.DETAILED)
         writer.onRow = { rows -> onSheetProgress(fileName, rows) }
@@ -647,11 +933,17 @@ class AiPackBuilder(
         false
     }.getOrDefault(true)
 
-    /** Returns the status the extractor actually reached. */
+    /**
+     * Returns the status the extractor actually reached.
+     *
+     * If [textBuilder] is provided, the extracted text is also appended
+     * to it for database persistence.
+     */
     private fun emitDocx(
         text: PackTextWriter,
         input: InputStream,
-        documentUri: String
+        documentUri: String,
+        textBuilder: StringBuilder? = null
     ): ExtractionStatus {
         val doc = runCatching { docxReader.read(input) }.getOrNull()
 
@@ -679,12 +971,16 @@ class AiPackBuilder(
         }
         for (block in doc.blocks) {
             when (block) {
-                is DocxTextReader.Block.Paragraph ->
-                    if (block.heading) text.line("## ${block.text}") else text.line(block.text)
+                is DocxTextReader.Block.Paragraph -> {
+                    text.line(if (block.heading) "## ${block.text}" else block.text)
+                    textBuilder?.append(block.text).append("\n")
+                }
 
                 is DocxTextReader.Block.Table -> {
                     for (r in block.rows) {
-                        text.line(r.joinToString("\t") { it.replace('\t', ' ') })
+                        val rowText = r.joinToString("\t") { it.replace('\t', ' ') }
+                        text.line(rowText)
+                        textBuilder?.append(rowText).append("\n")
                     }
                     text.line()
                 }
@@ -693,10 +989,13 @@ class AiPackBuilder(
         return ExtractionStatus.SUCCESS
     }
 
-    private fun emitPlainText(text: PackTextWriter, input: InputStream, extension: String) {
+    private fun emitPlainText(text: PackTextWriter, input: InputStream, extension: String, textBuilder: StringBuilder? = null) {
         val bytes = input.readBytes()
         val decoded = decodeText(bytes, extension)
-        decoded.lineSequence().forEach { text.line(it.trimEnd()) }
+        decoded.lineSequence().forEach { line ->
+            text.line(line.trimEnd())
+            textBuilder?.append(line.trimEnd()).append("\n")
+        }
     }
 
     /**

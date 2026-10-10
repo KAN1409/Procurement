@@ -20,18 +20,36 @@ class PackTextWriter(private val out: OutputStream) {
     private var bytesWritten = 0L
     private var lineOpen = false
 
-    val size: Long get() = bytesWritten
+    /**
+ * Bytes handed to this writer so far.
+ *
+ * This does NOT flush. Streaming must stay streaming: flushing on every size
+ * read would defeat the bounded-memory design and make a large workbook read
+ * materialise into the output stream at arbitrary points. Callers that need the
+ * true byte count must [flush] first - which is exactly what the pack footer
+ * does before it reports its size.
+ */
+val size: Long get() = bytesWritten
 
     /**
      * The underlying stream, so a spooled normalized block can be copied in
      * without being re-extracted.
-     *
+ *
      * Any buffered text is flushed first, otherwise the copy would land before
      * the rule lines that precede it.
      */
     fun rawOut(): OutputStream {
         writer.flush()
         return out
+    }
+
+    /**
+     * Writes pre-rendered text through the writer so byte counting stays
+     * accurate. Used when a block is copied with its own heading.
+     */
+    fun rawOutWrite(s: String) {
+        writer.write(s)
+        bytesWritten += s.toByteArray(StandardCharsets.UTF_8).size
     }
 
     private fun write(s: String) {

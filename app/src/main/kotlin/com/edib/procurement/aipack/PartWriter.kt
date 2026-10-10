@@ -234,6 +234,8 @@ object MultipartManifest {
         entriesInPart: List<String>,
         originalBytes: Long,
         normalizedBytes: Long,
+        /** Byte size of the finished ZIP; 0 while the part is still being written. */
+        finalArtifactBytes: Long = 0,
         documentCount: Int,
         oversizedReason: String?,
         sources: List<PackSource>
@@ -248,7 +250,9 @@ object MultipartManifest {
         sb.append("  \"partNumber\": $partNumber,\n")
         sb.append("  \"partCount\": $partCount,\n")
         sb.append("  \"targetPartBytes\": $targetPartBytes,\n")
-        sb.append("  \"actualPartBytes\": ${normalizedBytes},\n")
+        // Placeholder: the real final ZIP size is written by the builder after the
+        // manifest rewrite, when the artifact is final and its bytes are known.
+        sb.append("  \"finalPartBytes\": $finalArtifactBytes,\n")
         if (oversizedReason != null) {
             sb.append("  \"oversizedReason\": \"${esc(oversizedReason)}\",\n")
         } else {
@@ -264,7 +268,9 @@ object MultipartManifest {
         sb.append("    \"documents\": $documentCount\n")
         sb.append("  },\n")
         sb.append("  \"originalBytes\": $originalBytes,\n")
-        sb.append("  \"normalizedBytes\": $normalizedBytes,\n")
+        sb.append("  \"normalizedUncompressedBytes\": $normalizedBytes,\n")
+        // v1 field name, retained so existing readers keep working.
+        sb.append("  \"actualPartBytes\": $finalArtifactBytes,\n")
         sb.append("  \"groups\": [\n")
         groupsInPart.forEachIndexed { i, g ->
             sb.append("    \"${esc(g)}\"")

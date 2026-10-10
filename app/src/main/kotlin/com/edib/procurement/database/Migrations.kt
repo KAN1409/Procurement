@@ -175,4 +175,40 @@ object Migrations {
             )
         }
     }
+
+/**
+ * v4 -> v5: Add content indexing state fields to document table.
+ *
+ * This enables document-level content indexing separate from AI Pack generation.
+ * Fields added:
+ * - contentState: NOT_INDEXED, INDEXED, NEEDS_OCR, STALE, UNSUPPORTED, FAILED
+ * - extractionMethod: which extractor was used
+ * - extractedAt: when extraction was performed
+ * - extractorVersion: version of the extractor
+ * - extractionError: error message if failed
+ * - sourceSizeAtExtraction: source file size at extraction time
+ * - sourceModifiedAtExtraction: source file last-modified at extraction time
+ *
+ * All fields are nullable with defaults so existing rows remain valid.
+ */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE document ADD COLUMN contentState TEXT NOT NULL DEFAULT 'NOT_INDEXED'")
+        db.execSQL("ALTER TABLE document ADD COLUMN extractionMethod TEXT")
+        db.execSQL("ALTER TABLE document ADD COLUMN extractedAt INTEGER")
+        db.execSQL("ALTER TABLE document ADD COLUMN extractorVersion TEXT")
+        db.execSQL("ALTER TABLE document ADD COLUMN extractionError TEXT")
+        db.execSQL("ALTER TABLE document ADD COLUMN sourceSizeAtExtraction INTEGER")
+        db.execSQL("ALTER TABLE document ADD COLUMN sourceModifiedAtExtraction INTEGER")
+
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS index_document_contentState " +
+                "ON document(contentState)"
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS index_document_indexedAt " +
+                "ON document(indexedAt)"
+        )
+}
+    }
 }

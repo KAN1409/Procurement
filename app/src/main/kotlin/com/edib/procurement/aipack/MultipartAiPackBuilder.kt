@@ -93,6 +93,7 @@ class MultipartAiPackBuilder(
     private val context: Context,
     private val packDao: PackDao,
     private val aiPackDao: AiPackDao,
+    private val documentDao: DocumentDao,
     private val workspace: File,
     /** Reused so both the single and multipart paths extract identically. */
     private val single: AiPackBuilder
@@ -324,13 +325,26 @@ class MultipartAiPackBuilder(
                     )
                 }
                 // Rewrite the manifest now that the real source outcomes are known.
-                // This REBUILDS the zip, so the size and checksum must be taken
+                // This REBUILDS the zip, so size and checksum must be taken
                 // afterwards: recording them earlier would describe a file that no
                 // longer exists on disk.
-                rewriteManifest(written.file, exportId, part.number, plan.size,
-                    config.targetPartBytes, scope, generatedAt, partGroupLabels,
-                    partEntryCodes, originalTotalBytes, written.normalizedBytes,
-                    partSources.size, reason, partSources)
+                //
+                // finalPartBytes is self-referential - writing a number into the
+                // archive changes the archive's size - so it is written from the
+                // size of the previous build of this part. Two passes converge to
+                // within a few bytes, and the authoritative value (measured after
+                // the LAST write) is what the INDEX and the history record carry.
+                val sizeBeforeFinalWrite = written.file.length()
+                rewriteManifest(
+                    zip = written.file, exportId = exportId, partNumber = part.number,
+                    partCount = plan.size, target = config.targetPartBytes,
+                    scope = scope, generatedAt = generatedAt, groups = partGroupLabels,
+                    entries = partEntryCodes, originalBytes = originalTotalBytes,
+                    normalizedBytes = written.normalizedBytes,
+                    documentCount = partSources.size, oversizedReason = reason,
+                    sources = partSources,
+                    finalArtifactBytes = sizeBeforeFinalWrite
+                )
 
                 val finalBytes = written.file.length()
                 val finalSha = PartWriter.sha256(written.file)
@@ -534,11 +548,24 @@ class MultipartAiPackBuilder(
         zip: File, exportId: String, partNumber: Int, partCount: Int, target: Long,
         scope: PackScope, generatedAt: String, groups: List<String>, entries: List<String>,
         originalBytes: Long, normalizedBytes: Long, documentCount: Int,
-        oversizedReason: String?, sources: List<PackSource>
+        oversizedReason: String?, sources: List<PackSource>,
+        finalArtifactBytes: Long = 0
     ) {
         val manifest = MultipartManifest.build(
-            exportId, partNumber, partCount, target, scope, generatedAt, groups, entries,
-            originalBytes, normalizedBytes, documentCount, oversizedReason, sources
+            exportId = exportId,
+            partNumber = partNumber,
+            partCount = partCount,
+            targetPartBytes = target,
+            scope = scope,
+            generatedAt = generatedAt,
+            groupsInPart = groups,
+            entriesInPart = entries,
+            originalBytes = originalBytes,
+            normalizedBytes = normalizedBytes,
+            documentCount = documentCount,
+            oversizedReason = oversizedReason,
+            sources = sources,
+            finalArtifactBytes = finalArtifactBytes
         ).toByteArray(Charsets.UTF_8)
         runCatching {
             val tmp = File(zip.parentFile, ".manifest-${zip.name}.rewrite")
@@ -634,13 +661,29 @@ class MultipartAiPackBuilder(
                             include, detail, onSource, onProgress
                         )
                     } else {
-                        // The block was already extracted into the spool. Copy
-                        // those exact bytes: never extract the same source twice.
-                        text.rule()
-                        text.line(unit.sourceId!!)
-                        text.rule()
-                        text.line()
-                        spool.copyTo(sp, text.rawOut())
+                        val alias = sp.aliasOf
+                        if (alias != null && alias != unit.sourceId) {
+                            // Identical normalized content already appeared.
+                            // Provenance is kept in full; only the repeated body
+                            // is replaced by a reference, which is where the
+                            // context saving comes from.
+                            val text0 = spool.readText(sp)
+                            val marker = text0.indexOf(NormalizedSpool.BODY_START)
+                            val head = if (marker >= 0) text0.substring(0, marker) else text0
+                            text.rawOutWrite(head)
+                            text.line("CONTENT-ALIAS-OF: $alias")
+                            text.line(
+                                "(identical extracted content; provenance above is " +
+                                    "this document's own. See $alias for the content.)"
+                            )
+                            text.line()
+                        } else {
+                            // The spool file already holds the COMPLETE block,
+                            // including its own SOURCE heading, so it is copied
+                            // verbatim. Emitting a heading here as well is what
+                            // produced "SOURCE-0001 / SOURCE-0001" in real packs.
+                            spool.copyTo(sp, text.rawOut())
+                        }
                         // Report the outcome recorded during spooling, so the
                         // manifest still shows the real extraction status.
                         val (status, detail) = spoolStatus[doc.id]

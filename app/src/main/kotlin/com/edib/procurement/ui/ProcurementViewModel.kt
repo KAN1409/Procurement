@@ -270,6 +270,23 @@ fun rescanDocumentTree() {
      * Triggered after a scan, after an import and from SETTINGS. It never
      * touches a manual link, so it is always safe to re-run.
      */
+
+    // ------------------------------------------------------- content indexing
+
+    fun startContentIndexing() {
+        repo.startContentIndexing()
+    }
+
+    fun cancelContentIndexing() {
+        repo.cancelContentIndexing()
+    }
+
+    fun runOcrFallback() {
+        repo.runOcrFallback()
+    }
+
+    val contentIndexingProgress = repo.contentIndexingProgress
+
     /** Maps a raw contractor string to a canonical contractor by name. */
     fun mapContractorRaw(raw: String, canonical: String) {
         viewModelScope.launch {
@@ -416,29 +433,25 @@ fun rescanDocumentTree() {
  * time, which shows up as a list that never resolves. Caching keeps one
  * Pager alive per query and lets a new term cancel the previous one.
  */
-val projectPages: StateFlow<PagingData<ProjectWithCount>> =
+val projectPages: Flow<PagingData<ProjectWithCount>> =
     _query.flatMapLatest { q -> repo.projectsPager(q) }
         .cachedIn(viewModelScope)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PagingData.empty())
 
-val groupPages: StateFlow<PagingData<GroupListRow>> =
+val groupPages: Flow<PagingData<GroupListRow>> =
     _query.flatMapLatest { q -> repo.groupsPager(null, q) }
         .cachedIn(viewModelScope)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PagingData.empty())
 
 val groupPagesForProject: (Long) -> Flow<PagingData<GroupListRow>> = { projectId ->
     repo.groupsPager(projectId, "").cachedIn(viewModelScope)
 }
 
-val documentPages: StateFlow<PagingData<DocumentListRow>> =
+val documentPages: Flow<PagingData<DocumentListRow>> =
     _query.flatMapLatest { q -> repo.documentsPager(q) }
         .cachedIn(viewModelScope)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PagingData.empty())
 
-val contractorPages: StateFlow<PagingData<ContractorWithCount>> =
+val contractorPages: Flow<PagingData<ContractorWithCount>> =
     _query.flatMapLatest { q -> repo.contractorsPager(q) }
         .cachedIn(viewModelScope)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PagingData.empty())
 
 /**
  * Separate query state for the "Link to…" picker.
@@ -587,15 +600,13 @@ fun setLinkQuery(q: String) { _linkQuery.value = q }
         repo.groupsOfProjectPager(projectId, _projectQuery.value)
             .cachedIn(viewModelScope)
 
-val linkEntryPages: StateFlow<PagingData<LinkEntryRow>> =
+val linkEntryPages: Flow<PagingData<LinkEntryRow>> =
     _linkQuery.flatMapLatest { q -> repo.linkEntriesPager(q) }
         .cachedIn(viewModelScope)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PagingData.empty())
 
-val linkGroupPages: StateFlow<PagingData<LinkTargetRow>> =
+val linkGroupPages: Flow<PagingData<LinkTargetRow>> =
     _linkQuery.flatMapLatest { q -> repo.linkGroupsPager(q) }
         .cachedIn(viewModelScope)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PagingData.empty())
 
 
     fun entryRows(groupId: Long, query: String): Flow<PagingData<EntryRow>> =
@@ -748,8 +759,20 @@ val linkGroupPages: StateFlow<PagingData<LinkTargetRow>> =
             _packProgress.value = PackProgress("Preparing", 0, 0)
             _multipartResult.value = null
             try {
-                val r = repo.buildMultipart(scope, config, include, detail) { p ->
-                    _packProgress.value = p
+                var collapsed = false
+                val r = repo.buildMultipart(scope, config, include, detail,
+                    onProgress = { p -> _packProgress.value = p }
+                ) {
+                    // The plan produced a single part: there is nothing to split,
+                    // so this is an ordinary pack, not a one-part multipart export.
+                    collapsed = true
+                }
+                if (collapsed) {
+                    _multipartResult.value = null
+                    _packProgress.value = null
+                    _packResult.value = repo.buildPack(scope, include, detail, zip = true)
+                    say("AI Pack created: ${_packResult.value?.fileName}")
+                    return@launch
                 }
                 _multipartResult.value = r
                 if (!r.integrity.ok) {

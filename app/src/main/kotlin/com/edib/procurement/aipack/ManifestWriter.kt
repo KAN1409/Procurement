@@ -20,7 +20,9 @@ object ManifestWriter {
         documents: Int,
         originalTotalBytes: Long,
         normalizedBytes: Long,
-        sources: List<PackSource>
+        sources: List<PackSource>,
+        /** Size of the finished artifact; 0 until the archive is closed. */
+        finalArtifactBytes: Long = 0
     ): String {
         val sb = StringBuilder()
         val generatedAt =
@@ -54,8 +56,20 @@ object ManifestWriter {
             .append(sources.count { it.status == ExtractionStatus.SKIPPED }).append("\n")
         sb.append("  },\n")
 
+        // Three quantities that are genuinely different, named so a reader
+        // cannot confuse them:
+        //   originalSourceBytes         - the source files on disk
+        //   normalizedUncompressedBytes - the extracted text, uncompressed
+        //   finalArtifactBytes          - the generated file the user uploads
+        // The original v1 names are kept alongside them so a v1 manifest stays
+        // readable by anything already consuming this format.
+        sb.append("  \"originalSourceBytes\": ").append(originalTotalBytes).append(",\n")
+        sb.append("  \"normalizedUncompressedBytes\": ").append(normalizedBytes).append(",\n")
         sb.append("  \"originalTotalBytes\": ").append(originalTotalBytes).append(",\n")
         sb.append("  \"normalizedBytes\": ").append(normalizedBytes).append(",\n")
+        // The generated file's own size, recorded once the archive is closed.
+        // 0 while the pack is still being written.
+        sb.append("  \"finalArtifactBytes\": ").append(finalArtifactBytes).append(",\n")
 
         sb.append("  \"documents\": [\n")
         sources.forEachIndexed { i, s ->

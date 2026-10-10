@@ -66,6 +66,8 @@ class OpenXmlWorkbookReader {
         val sharedStrings = ArrayList<String>()
         val sheets = ArrayList<SheetInfo>()
         val workbookRels = HashMap<String, String>()
+        /** Cell style indexes whose number format renders as a date/time. */
+        val dateStyles = HashSet<Int>()
         val sheetXml = HashMap<String, ByteArray>()
 
         // The whole container is materialised first. A ZIP is a sequential
@@ -88,6 +90,12 @@ class OpenXmlWorkbookReader {
         parts["xl/workbook.xml"]?.let { parseWorkbook(it.inputStream(), sheets) }
         parts["xl/_rels/workbook.xml.rels"]?.let { parseRelationships(it.inputStream(), workbookRels) }
 
+        // Number formats decide whether a numeric cell is a date. The part is
+        // parsed and its bytes released immediately so the streaming guarantee
+        // of this reader is untouched.
+        val stylesBytes = parts.remove("xl/styles.xml")
+        stylesBytes?.let { parseStyles(it.inputStream(), dateStyles) }
+
         if (sheets.isEmpty()) throw IOException("workbook declares no sheets")
 
         for (sheet in sheets) {
@@ -95,7 +103,7 @@ class OpenXmlWorkbookReader {
             val zipPath = if (target.startsWith("/")) target.removePrefix("/")
             else "xl/" + target.removePrefix("./")
             val bytes = parts[zipPath] ?: continue
-            parseSheet(bytes.inputStream(), sheet.name, sharedStrings, sink, useTsv)
+            parseSheet(bytes.inputStream(), sheet.name, sharedStrings, sink, useTsv, dateStyles)
         }
     }
 
@@ -170,6 +178,69 @@ class OpenXmlWorkbookReader {
         run(stream, handler)
     }
 
+    /**
+     * Records which cellXfs indexes are date-formatted.
+     *
+     * A byte scan rather than another SAX parse: styles.xml is machine-generated
+     * with a fixed attribute set, and a fourth parser setup showed up in the
+     * heap profile of a large streaming read. The part is small and is released
+     * by the caller as soon as this returns.
+     *
+     * A built-in numFmtId may itself be a date format; a custom one has to be
+     * read. Both are checked, because Excel uses both.
+     */
+    private fun parseStyles(input: InputStream, out: MutableSet<Int>) {
+        val xml = runCatching {
+            input.bufferedReader(Charsets.UTF_8).readText()
+        }.getOrNull() ?: return
+
+        fun attr(tag: String, name: String): String? {
+            val key = name + "=\""
+            val i = tag.indexOf(key)
+            if (i < 0) return null
+            val from = i + key.length
+            val end = tag.indexOf('"', from)
+            return if (end < 0) null else tag.substring(from, end)
+        }
+
+        val codes = HashMap<Int, String>()
+        var at = 0
+        while (true) {
+            val i = xml.indexOf("<numFmt ", at)
+            if (i < 0) break
+            val e = xml.indexOf('>', i)
+            if (e < 0) break
+            val tag = xml.substring(i, e)
+            val id = attr(tag, "numFmtId")?.toIntOrNull()
+            val code = attr(tag, "formatCode")
+            if (id != null && code != null) codes[id] = code
+            at = e + 1
+        }
+
+        val blockStart = xml.indexOf("<cellXfs")
+        if (blockStart < 0) return
+        val closeAt = xml.indexOf("</cellXfs>", blockStart)
+        val block = xml.substring(blockStart, if (closeAt < 0) xml.length else closeAt)
+
+        var index = 0
+        var p = 0
+        while (true) {
+            val i = block.indexOf("<xf ", p)
+            if (i < 0) break
+            val e = block.indexOf('>', i)
+            if (e < 0) break
+            val numFmtId = attr(block.substring(i, e), "numFmtId")?.toIntOrNull() ?: 0
+            val isDate = if (codes.containsKey(numFmtId)) {
+                ExcelDateFormat.isDateFormatCode(codes[numFmtId]!!)
+            } else {
+                ExcelDateFormat.isBuiltinDateId(numFmtId)
+            }
+            if (isDate) out.add(index)
+            index++
+            p = e + 1
+        }
+    }
+
     private fun parseWorkbook(stream: InputStream, out: MutableList<SheetInfo>) {
         val handler = object : DefaultHandler() {
             override fun startElement(u: String?, l: String?, q: String?, a: Attributes?) {
@@ -200,7 +271,9 @@ class OpenXmlWorkbookReader {
     private class SheetHandler(
         private val sharedStrings: List<String>,
         private val sheetName: String,
-        private val sink: SheetSink
+        private val sink: SheetSink,
+        /** Cell style indexes whose number format renders as a date/time. */
+        private val dateStyles: Set<Int>
     ) : DefaultHandler() {
 
         val merged = ArrayList<String>()
@@ -230,12 +303,24 @@ class OpenXmlWorkbookReader {
             // column's position, which is what keeps a sparse table readable.
             if (curCol + 1 > maxColumn) maxColumn = curCol + 1
             val text = formula?.toString()?.takeIf { it.isNotBlank() }
+
+            // A date cell holds a serial number plus a number format saying how
+            // to display it. ONLY cells the workbook actually formats as dates
+            // are converted: a quantity, a rate or a plain number that happens
+            // to be five digits is left exactly as stored.
+            var rendered = raw.orEmpty()
+            if (curType.isNullOrEmpty() || curType == "n") {
+                val d = raw?.trim()?.toDoubleOrNull()
+                if (d != null && curStyle in dateStyles) {
+                    ExcelDateFormat.renderDateCell(d)?.let { rendered = it }
+                }
+            }
             cells.add(
                 Cell(
                     ref = curRef,
                     column = curCol,
                     type = curType,
-                    value = raw.orEmpty(),
+                    value = rendered,
                     formula = text
                 )
             )
@@ -330,7 +415,8 @@ class OpenXmlWorkbookReader {
         name: String,
         sharedStrings: List<String>,
         sink: SheetSink,
-        @Suppress("UNUSED_PARAMETER") useTsv: Boolean
+        @Suppress("UNUSED_PARAMETER") useTsv: Boolean,
+        dateStyles: Set<Int>
     ) {
         // The sheet is announced even when it holds no rows, so a workbook's
         // full sheet list is represented rather than silently dropping empty
@@ -359,7 +445,7 @@ class OpenXmlWorkbookReader {
                 sink.endSheet()
             }
         }
-        run(stream, SheetHandler(sharedStrings, name, writer))
+        run(stream, SheetHandler(sharedStrings, name, writer, dateStyles))
         // A sheet with no rows produces no SAX events at all, so the sheet's
         // end is signalled explicitly. Without this an empty sheet would be
         // missing from the pack entirely.

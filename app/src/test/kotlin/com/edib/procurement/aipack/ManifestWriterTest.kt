@@ -53,8 +53,11 @@ class ManifestWriterTest {
         assertTrue(json.contains("\"groups\": 1"))
         assertTrue(json.contains("\"entries\": 14"))
         assertTrue(json.contains("\"documents\": 2"))
-        assertTrue(json.contains("\"originalTotalBytes\": 1000"))
-        assertTrue(json.contains("\"normalizedBytes\": 250"))
+        // The three byte counts are distinct quantities and are named so they
+        // cannot be read as one another: source files, extracted text, and the
+        // generated artifact.
+        assertTrue(json.contains("\"originalSourceBytes\": 1000"))
+        assertTrue(json.contains("\"normalizedUncompressedBytes\": 250"))
         assertTrue(json.contains("SOURCE-0001"))
         assertTrue(json.contains("\"extractionStatus\": \"SUCCESS\""))
         assertTrue(json.contains("\"extractionStatus\": \"ERROR\""))

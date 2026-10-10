@@ -96,6 +96,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     implementation("androidx.navigation:navigation-compose:2.8.5")
+    implementation("androidx.compose.material3:material3:1.3.1")
     implementation("androidx.compose.material:material-icons-core:1.7.2")
 
     // Paging 3: every long list in the app is a database-backed Pager, so the
@@ -115,18 +116,8 @@ dependencies {
     // page to a bitmap and never exposes text, and the pack must not render.
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 
-    // Explicit versions rather than a BOM: these are the exact artifacts already
-    // present in the local Gradle cache, which keeps offline builds working.
-    // Compose tooling (ui-tooling / ui-tooling-preview) is omitted on purpose:
-    // it is a design-time preview aid only and adds nothing to the app.
-    implementation("androidx.compose.ui:ui:1.7.2")
-    implementation("androidx.compose.ui:ui-graphics:1.7.2")
-    implementation("androidx.compose.foundation:foundation:1.7.2")
-    implementation("androidx.compose.material3:material3:1.3.1")
-
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
-    implementation("androidx.activity:activity-compose:1.9.3")
+    // Tesseract OCR with Arabic + English support (via Tesseract4Android)
+    implementation("cz.adaptech.tesseract4android:tesseract4android-openmp:4.9.0")
 
     // Test-only. The procurement unit tests are plain JVM: grouping,
     // normalisation, matching and formatting. No Android runtime, no mocking

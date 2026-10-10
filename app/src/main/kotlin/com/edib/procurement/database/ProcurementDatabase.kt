@@ -28,7 +28,7 @@ import androidx.room.RoomDatabase
         AiPackEntity::class,
         AiPackSourceEntity::class
     ],
-    version = 3,
+    version = 5,
     exportSchema = false
 )
 abstract class ProcurementDatabase : RoomDatabase() {
@@ -49,7 +49,7 @@ abstract class ProcurementDatabase : RoomDatabase() {
                     ProcurementDatabase::class.java,
                     "procurement.db"
                 )
-                    .addMigrations(Migrations.MIGRATION_1_2, Migrations.MIGRATION_2_3)
+                    .addMigrations(Migrations.MIGRATION_1_2, Migrations.MIGRATION_2_3, Migrations.MIGRATION_3_4, Migrations.MIGRATION_4_5)
                     .build()
                     .also { instance = it }
             }

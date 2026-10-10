@@ -40,6 +40,16 @@ data class ScanSummary(
  *
  * SHA-256 is left null here and computed on demand by [hashOf] only when
  * something actually needs content identity.
+ *
+ * Uses stable URI-based reconciliation:
+ * - At scan start: mark existing documents for the tree as missing
+ * - While walking:
+ *   - If URI already exists and size/lastModified unchanged: preserve document id,
+ *     extractedText, contentState, extraction metadata; clear isMissing; update only safe metadata
+ *   - If URI exists but size/lastModified changed: preserve document id and user
+ *     relationships; update metadata; mark contentState = STALE
+ *   - If URI is new: insert new DocumentEntity with contentState = NOT_INDEXED
+ * - After walking: unseen rows remain isMissing = true; user-created relationships preserved
  */
 class DocumentTreeScanner(
     private val context: Context,
@@ -53,8 +63,25 @@ class DocumentTreeScanner(
          * Extensions indexed in V1. The scanner dispatches on extension rather
          * than MIME type because SAF reports vendor-specific types for Office
          * files on some devices; the set is easy to widen later.
+         *
+         * RTF is deliberately absent. A real archive holds a lot of it (this
+         * device: 72 files, ~244 MB), and indexing a format that cannot be
+         * read would fill the library with entries that fail at export time.
+         * Supporting it is a tracked decision, not an oversight.
+         *
+         * .doc IS indexed because Word legitimately saves OOXML under that name.
+         * A genuine OLE2 .doc is unreadable here and is reported UNSUPPORTED
+         * with a remedy rather than being misfiled as an OCR case.
          */
         val SUPPORTED_EXTENSIONS = setOf("pdf", "docx", "doc", "xlsx", "xls", "csv", "txt")
+
+        /**
+         * Formats seen in real corpora that this version does not index.
+         *
+         * Recorded so a future capability decision has evidence behind it, and
+         * so the scanner can explain an omission instead of silently skipping.
+         */
+        val KNOWN_UNSUPPORTED_EXTENSIONS = setOf("rtf")
 
         /** MIME type per extension, for ACTION_VIEW with the right type. */
         fun mimeFor(extension: String?): String = when (extension?.lowercase()) {
@@ -84,7 +111,6 @@ class DocumentTreeScanner(
  */
 fun scan(
         treeUri: Uri,
-        deleteExisting: Boolean = true,
         master: MasterWorkbookIdentity = MasterWorkbookIdentity(null, null, null, 0)
     ): Flow<ScanProgress> = flow {
         val treeUriString = treeUri.toString()
@@ -102,11 +128,15 @@ fun scan(
         // buildChildDocumentsUriUsingTree requires.
         val scanTreeUri = treeUri
 
-        if (deleteExisting) documentDao.deleteByTree(treeUriString)
+        // Step 1: Mark all existing documents for this tree as missing
+        // This is the stable URI-based reconciliation approach
+        documentDao.markAllMissing(treeUriString)
 
         var scanned = 0
         var indexed = 0
         var skipped = 0
+        var updated = 0
+        var stale = 0
         var masterSkipped = 0
 
         // Pending batch, flushed periodically so a 10k-file tree does not build
@@ -121,13 +151,13 @@ fun scan(
         }
 
         /**
- * Depth-first walk of [treeDocId].
- *
- * The document id is threaded explicitly instead of being re-derived from a
- * URI. A tree URI carries the ROOT id, so calling `getDocumentId` on the tree
- * URI at every level would re-enumerate the root forever.
- */
-suspend fun walk(docId: String, relativePrefix: String) {
+     * Depth-first walk of [treeDocId].
+     *
+     * The document id is threaded explicitly instead of being re-derived from a
+     * URI. A tree URI carries the ROOT id, so calling `getDocumentId` on the tree
+     * URI at every level would re-enumerate the root forever.
+     */
+        suspend fun walk(docId: String, relativePrefix: String) {
             currentCoroutineContext().ensureActive()
             val children = listChildren(scanTreeUri, docId)
 
@@ -166,25 +196,54 @@ suspend fun walk(docId: String, relativePrefix: String) {
                     continue
                 }
 
-                if (!seenUris.add(child.uri.toString())) continue
+                val childUri = child.uri.toString()
+                if (!seenUris.add(childUri)) continue
 
-                // A document that still carries a manual link was deliberately
-                // kept during the rescan. Re-inserting it would create a second
-                // row for the same file and orphan that link, so the existing row
-                // is simply refreshed in place.
-                val existingId = documentDao.documentIdForUri(child.uri.toString())
+                // Stable URI-based reconciliation
+                val existingId = documentDao.documentIdForUri(childUri)
                 if (existingId != null && existingId > 0) {
-                    documentDao.refreshDocument(
-                        existingId, child.size, child.lastModified,
-                        System.currentTimeMillis()
-                    )
+                    // Document exists - check if content changed
+                    val existingDoc = documentDao.byId(existingId)
+                    if (existingDoc != null) {
+                        if (existingDoc.size == child.size && existingDoc.lastModified == child.lastModified) {
+                            // A) Size AND lastModified unchanged: preserve everything, clear isMissing
+                            documentDao.refreshDocument(
+                                existingId, child.size, child.lastModified,
+                                System.currentTimeMillis()
+                            )
+                            // Also clear isMissing flag
+                            documentDao.clearMissing(childUri)
+                            updated++
+                        } else {
+                            // B) Size OR lastModified changed: preserve id and user relationships,
+                            // update metadata, mark contentState = STALE
+                            documentDao.refreshDocument(
+                                existingId, child.size, child.lastModified,
+                                System.currentTimeMillis()
+                            )
+                            documentDao.clearMissing(childUri)
+                            // Mark content as STALE so it gets re-indexed
+                            documentDao.updateContentState(
+                                existingId,
+                                ContentState.STALE,
+                                null,
+                                0,
+                                null,
+                                "File content changed since last extraction",
+                                child.size,
+                                child.lastModified
+                            )
+                            stale++
+                        }
+                    }
                     continue
                 }
 
+                // C) URI is new: insert new DocumentEntity with contentState = NOT_INDEXED
                 batch.add(
                     DocumentEntity(
                         treeUri = treeUriString,
-                        documentUri = child.uri.toString(),
+                        documentUri = childUri,
                         displayName = child.displayName,
                         normalizedName =
                             com.edib.procurement.followup.TextNormalizer.normalize(child.displayName),
@@ -197,7 +256,8 @@ suspend fun walk(docId: String, relativePrefix: String) {
                         size = child.size,
                         lastModified = child.lastModified,
                         indexedAt = System.currentTimeMillis(),
-                        isMissing = false
+                        isMissing = false,
+                        contentState = ContentState.NOT_INDEXED
                     )
                 )
                 indexed++

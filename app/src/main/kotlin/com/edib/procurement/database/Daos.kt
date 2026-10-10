@@ -80,7 +80,9 @@ data class DocumentListRow(
     val lastModified: Long,
     val extension: String?,
     val isMissing: Boolean,
-    val linkCount: Int
+    val linkCount: Int,
+    val extractedText: String = "",
+    val contentState: String = "NOT_INDEXED"
 )
 
 data class UnlinkedDocumentRow(
@@ -449,6 +451,7 @@ interface FollowUpDao {
                g.notes LIKE '%' || :query || '%' OR
                EXISTS (SELECT 1 FROM followup_entry e2 WHERE e2.groupId = g.id AND
                  (e2.codeNormalized LIKE '%' || :query || '%' OR
+                  e2.matchCodeKey LIKE '%' || :query || '%' OR
                   e2.description LIKE '%' || :query || '%' OR
                   e2.companyRaw LIKE '%' || :query || '%' OR
                   e2.prPathRaw LIKE '%' || :query || '%' OR
@@ -720,11 +723,16 @@ interface FollowUpDao {
                d.documentUri AS documentUri, d.mimeType AS mimeType, d.size AS size,
                d.lastModified AS lastModified, d.extension AS extension,
                d.isMissing AS isMissing,
-               (SELECT COUNT(*) FROM document_link l WHERE l.documentId = d.id) AS linkCount
+               (SELECT COUNT(*) FROM document_link l WHERE l.documentId = d.id) AS linkCount,
+               d.extractedText AS extractedText,
+               d.contentState AS contentState
         FROM document d
         WHERE d.isMissing = 0
           AND (:query = '' OR d.normalizedName LIKE '%' || :query || '%'
-               OR d.relativePath LIKE '%' || :query || '%')
+               OR d.relativePath LIKE '%' || :query || '%'
+               OR d.matchFileKey LIKE '%' || :query || '%'
+               OR d.matchStemKey LIKE '%' || :query || '%'
+               OR d.extractedText LIKE '%' || :query || '%')
         ORDER BY d.id ASC
         """
     )
@@ -751,6 +759,8 @@ interface FollowUpDao {
         LEFT JOIN contractor mc ON mc.id = e.manualContractorId
         WHERE e.groupId = :groupId
           AND (:query = '' OR e.codeRaw LIKE '%' || :query || '%'
+               OR e.codeNormalized LIKE '%' || :query || '%'
+               OR e.matchCodeKey LIKE '%' || :query || '%'
                OR e.description LIKE '%' || :query || '%'
                OR e.companyRaw LIKE '%' || :query || '%')
         ORDER BY e.id ASC
@@ -902,7 +912,10 @@ interface FollowUpDao {
         SELECT d.id FROM document d
         WHERE d.isMissing = 0
           AND (:query = '' OR d.normalizedName LIKE '%' || :query || '%'
-               OR d.relativePath LIKE '%' || :query || '%')
+               OR d.relativePath LIKE '%' || :query || '%'
+               OR d.matchFileKey LIKE '%' || :query || '%'
+               OR d.matchStemKey LIKE '%' || :query || '%'
+               OR d.extractedText LIKE '%' || :query || '%')
         ORDER BY d.id ASC
         """
     )
@@ -1219,6 +1232,37 @@ interface DocumentDao {
     )
     suspend fun refreshDocument(id: Long, size: Long, lastModified: Long, indexedAt: Long)
 
+    @Query(
+        """
+        UPDATE document SET extractedText = :text WHERE id = :id
+        """
+    )
+    suspend fun updateExtractedText(id: Long, text: String)
+
+    @Query(
+        """
+        UPDATE document SET
+            contentState = :state,
+            extractionMethod = :method,
+            extractedAt = :extractedAt,
+            extractorVersion = :version,
+            extractionError = :error,
+            sourceSizeAtExtraction = :sourceSize,
+            sourceModifiedAtExtraction = :sourceModified
+        WHERE id = :id
+        """
+    )
+    suspend fun updateContentState(
+        id: Long,
+        state: ContentState,
+        method: String?,
+        extractedAt: Long,
+        version: String?,
+        error: String?,
+        sourceSize: Long?,
+        sourceModified: Long?
+    )
+
     @Query("SELECT * FROM document WHERE documentUri = :uri LIMIT 1")
     suspend fun byUri(uri: String): DocumentEntity?
 
@@ -1232,17 +1276,55 @@ interface DocumentDao {
     @Query("SELECT * FROM document WHERE id = :id")
     suspend fun byId(id: Long): DocumentEntity?
 
+    /** Count of documents that need indexing (NOT_INDEXED or STALE). */
+    @Query(
+        """
+        SELECT COUNT(*) FROM document
+        WHERE isMissing = 0
+          AND (contentState = 'NOT_INDEXED' OR contentState = 'STALE')
+        """
+    )
+    suspend fun countNeedingIndexing(): Int
+
+    /** Batch of documents needing indexing. */
+    @Query(
+        """
+        SELECT * FROM document
+        WHERE isMissing = 0
+          AND (contentState = 'NOT_INDEXED' OR contentState = 'STALE')
+        ORDER BY indexedAt ASC
+        LIMIT :limit OFFSET :offset
+        """
+    )
+    suspend fun documentsNeedingIndexing(limit: Int, offset: Int): List<DocumentEntity>
+
+    /** All documents with a specific content state. */
+    @Query(
+        """
+        SELECT * FROM document
+        WHERE isMissing = 0
+          AND contentState = :state
+        ORDER BY indexedAt ASC
+        """
+    )
+    suspend fun documentsWithContentState(state: ContentState): List<DocumentEntity>
+
     @Query(
         """
         SELECT d.id AS id, d.displayName AS displayName, d.relativePath AS relativePath,
                d.documentUri AS documentUri, d.mimeType AS mimeType, d.size AS size,
                d.lastModified AS lastModified, d.extension AS extension,
                d.isMissing AS isMissing,
-               (SELECT COUNT(*) FROM document_link l WHERE l.documentId = d.id) AS linkCount
+               (SELECT COUNT(*) FROM document_link l WHERE l.documentId = d.id) AS linkCount,
+               d.extractedText AS extractedText,
+               d.contentState AS contentState
         FROM document d
         WHERE d.isMissing = 0
           AND (:query = '' OR d.normalizedName LIKE '%' || :query || '%'
-               OR d.relativePath LIKE '%' || :query || '%')
+               OR d.relativePath LIKE '%' || :query || '%'
+               OR d.matchFileKey LIKE '%' || :query || '%'
+               OR d.matchStemKey LIKE '%' || :query || '%'
+               OR d.extractedText LIKE '%' || :query || '%')
         ORDER BY d.relativePath ASC
         LIMIT :limit OFFSET :offset
         """
