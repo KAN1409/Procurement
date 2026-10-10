@@ -429,6 +429,9 @@ fun homeCounts(): Flow<HomeCounts> {
     fun rateSourceDocuments(query: String): Flow<List<RateSourceChoice>> =
         rateDao.sourceDocuments(query.trim())
 
+    fun rateCheckChoices(query: String): Flow<List<RateListRow>> =
+        rateDao.awardedChoices(query.trim())
+
     /**
      * Persists one commercial observation without inventing any context.
      *
@@ -519,7 +522,6 @@ fun homeCounts(): Flow<HomeCounts> {
         withContext(Dispatchers.IO) {
             val candidates = rateDao.awardedCandidates(
                 itemNormalized = normalizeRateItem(request.itemRaw),
-                unitNormalized = normalizeRateUnit(request.unit),
                 scope = request.scope,
                 currency = request.currency.trim().uppercase()
             )
