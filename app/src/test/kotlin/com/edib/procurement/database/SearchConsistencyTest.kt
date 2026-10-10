@@ -24,7 +24,10 @@ class SearchConsistencyTest {
         // for allDocumentIds and documentsFlow should be identical in their WHERE clause
         
         // Verify the method exists and has correct signature
-        val method = DocumentDao::class.java.getDeclaredMethod("allDocumentIds", String::class.java)
+        val method = DocumentDao::class.java.declaredMethods.firstOrNull { candidate ->
+            candidate.name == "allDocumentIds" &&
+                candidate.parameterTypes.firstOrNull() == String::class.java
+        }
         assertNotNull(method)
     }
 

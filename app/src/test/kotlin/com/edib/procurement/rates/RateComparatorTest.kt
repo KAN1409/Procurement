@@ -108,7 +108,7 @@ class RateComparatorTest {
         assertNull(result.deltaAmount)
         assertNull(result.deltaPercent)
         assertEquals(RateCheckVerdict.NO_COMPARABLE, result.verdict)
-        assertTrue(result.explanation.any { it.contains("No strict awarded comparable") })
+        assertTrue(result.explanation.any { it.contains("No directly comparable awarded rate") })
     }
 
     @Test

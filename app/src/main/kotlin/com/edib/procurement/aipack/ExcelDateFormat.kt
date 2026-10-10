@@ -138,11 +138,13 @@ object ExcelDateFormat {
             // phantom 29 February, which has no calendar equivalent, so 60 and
             // above are read from the 1899-12-30 epoch where serial 1 is the
             // 1900-01-01 that users actually see.
-            if (serial < 61) {
-                // Serial 1 is 1900-01-01.
-                java.time.LocalDate.of(1900, 1, 1).plusDays(serial - 1)
-            } else {
-                java.time.LocalDate.of(1899, 12, 30).plusDays(serial)
+            when {
+                // Excel's serial 60 is the non-existent 1900-02-29. There is
+                // no valid LocalDate for it, so preserve monotonic business
+                // dates by folding it onto the real previous day.
+                serial == 60L -> java.time.LocalDate.of(1900, 2, 28)
+                serial < 60L -> java.time.LocalDate.of(1899, 12, 31).plusDays(serial)
+                else -> java.time.LocalDate.of(1899, 12, 30).plusDays(serial)
             }
         }.getOrNull()
     }

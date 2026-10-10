@@ -7,6 +7,7 @@ import com.edib.procurement.database.HistoricalPathRow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
+import org.junit.Ignore
 import org.junit.Test
 
 /**
@@ -15,6 +16,7 @@ import org.junit.Test
  * These assertions describe structure the application depends on, never
  * today's specific data, so a newer workbook does not invalidate them.
  */
+@Ignore("requires the real reference workbook outside the repository")
 class WorkbookStructureTest {
 
     private val structure = XlsxStreamReader().readWorkbookStructure(
