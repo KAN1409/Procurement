@@ -193,8 +193,30 @@ object RateScope {
 fun normalizeRateItem(value: String): String =
     value.trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
 
-fun normalizeRateUnit(value: String): String =
-    value.trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
+fun normalizeRateUnit(value: String): String {
+    val compact = value
+        .trim()
+        .lowercase(Locale.ROOT)
+        .replace(Regex("\\s+"), " ")
+        .replace("²", "2")
+        .replace("³", "3")
+        .replace("^", "")
+        .replace(".", "")
+        .trim()
+
+    return when (compact) {
+        "m2", "sqm", "sq m", "square meter", "square meters",
+        "square metre", "square metres", "م2", "متر مربع" -> "m2"
+
+        "m3", "cum", "cu m", "cubic meter", "cubic meters",
+        "cubic metre", "cubic metres", "م3", "متر مكعب" -> "m3"
+
+        "lm", "l m", "linear meter", "linear meters",
+        "linear metre", "linear metres", "م ط", "متر طولي" -> "lm"
+
+        else -> compact
+    }
+}
 
 @Dao
 interface RateDao {
@@ -345,9 +367,9 @@ interface RateDao {
     /**
      * Candidate pool for Rate Check.
      *
-     * This query only admits awarded observations with exact item/unit/scope/
-     * currency. Material, specification and dimensions are filtered in Kotlin
-     * with the same conservative whitespace/case normalization used by the UI.
+     * SQL admits awarded observations with exact item/scope/currency. Unit,
+     * material, specification and dimensions are gated in Kotlin so controlled
+     * unit aliases such as m2 / m² can compare safely without mutating raw data.
      * No averages, width scaling or scope conversion happen here.
      */
     @Query(
@@ -386,7 +408,6 @@ interface RateDao {
         LEFT JOIN document d ON d.id = r.sourceDocumentId
         WHERE r.status = 'AWARDED'
           AND r.itemNormalized = :itemNormalized
-          AND LOWER(TRIM(r.unit)) = :unitNormalized
           AND r.scope = :scope
           AND UPPER(TRIM(r.currency)) = :currency
         ORDER BY r.observedDate DESC, r.id DESC
@@ -395,9 +416,65 @@ interface RateDao {
     )
     suspend fun awardedCandidates(
         itemNormalized: String,
-        unitNormalized: String,
         scope: String,
         currency: String,
         limit: Int = 200
     ): List<RateListRow>
+
+    /**
+     * Existing awarded observations offered as safe templates in Rate Check.
+     * Selecting one copies only its commercial signature into the proposal
+     * form. It does not choose its historical price as the proposed price.
+     */
+    @Query(
+        """
+        SELECT
+            r.id AS id,
+            r.itemRaw AS itemRaw,
+            r.itemNormalized AS itemNormalized,
+            r.material AS material,
+            r.specification AS specification,
+            r.dimensions AS dimensions,
+            r.unit AS unit,
+            r.scope AS scope,
+            r.contractorId AS contractorId,
+            COALESCE(c.canonicalName, r.contractorRaw) AS contractorName,
+            r.projectId AS projectId,
+            COALESCE(p.canonicalName, r.projectRaw) AS projectName,
+            r.location AS location,
+            r.quantity AS quantity,
+            r.rate AS rate,
+            r.currency AS currency,
+            r.status AS status,
+            r.observedDate AS observedDate,
+            r.sourceDocumentId AS sourceDocumentId,
+            COALESCE(d.displayName, r.sourceFileNameSnapshot) AS sourceFileName,
+            COALESCE(d.relativePath, r.sourceRelativePathSnapshot) AS sourceRelativePath,
+            COALESCE(d.documentUri, r.sourceUriSnapshot) AS sourceUri,
+            d.mimeType AS sourceMimeType,
+            d.extension AS sourceExtension,
+            r.evidenceLocator AS evidenceLocator,
+            r.evidenceText AS evidenceText,
+            r.notes AS notes
+        FROM rate_observation r
+        LEFT JOIN contractor c ON c.id = r.contractorId
+        LEFT JOIN project p ON p.id = r.projectId
+        LEFT JOIN document d ON d.id = r.sourceDocumentId
+        WHERE r.status = 'AWARDED'
+          AND (
+              :query = ''
+              OR r.itemRaw LIKE '%' || :query || '%'
+              OR r.material LIKE '%' || :query || '%'
+              OR r.specification LIKE '%' || :query || '%'
+              OR r.dimensions LIKE '%' || :query || '%'
+              OR r.unit LIKE '%' || :query || '%'
+          )
+        ORDER BY
+            CASE WHEN :query != '' AND r.itemRaw LIKE :query || '%' THEN 0 ELSE 1 END,
+            r.observedDate DESC,
+            r.id DESC
+        LIMIT 40
+        """
+    )
+    fun awardedChoices(query: String): Flow<List<RateListRow>>
 }
