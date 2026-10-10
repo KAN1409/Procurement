@@ -6,6 +6,7 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import com.edib.procurement.database.DocumentDao
 import com.edib.procurement.database.DocumentEntity
+import com.edib.procurement.database.ContentState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
