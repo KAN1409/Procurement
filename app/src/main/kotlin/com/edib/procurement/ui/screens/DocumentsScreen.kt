@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.compose.foundation.lazy.items
@@ -21,7 +22,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.ProgressIndicator
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -29,6 +30,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -133,7 +137,7 @@ fun DocumentsScreen(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        ProgressIndicator(
+                        CircularProgressIndicator(
                             modifier = Modifier.size(16.dp),
                             color = ProcurementColors.AccentRed
                         )
@@ -155,11 +159,11 @@ fun DocumentsScreen(
                         Text("Indexed: ${indexingProgress.indexed}", style = MaterialTheme.typography.labelSmall, color = ProcurementColors.TextTertiary)
                         Text("Needs OCR: ${indexingProgress.needsOcr}", style = MaterialTheme.typography.labelSmall, color = ProcurementColors.StatusWarn)
                         Text("Unsupported: ${indexingProgress.unsupported}", style = MaterialTheme.typography.labelSmall, color = ProcurementColors.TextTertiary)
-                        Text("Failed: ${indexingProgress.failed}", style = MaterialTheme.typography.labelSmall, color = ProcurementColors.StatusError)
+                        Text("Failed: ${indexingProgress.failed}", style = MaterialTheme.typography.labelSmall, color = ProcurementColors.AccentRedBright)
                         Text("Remaining: ${indexingProgress.remaining}", style = MaterialTheme.typography.labelSmall, color = ProcurementColors.TextTertiary)
                     }
                     if (indexingProgress.error != null) {
-                        Text("Error: ${indexingProgress.error}", style = MaterialTheme.typography.labelSmall, color = ProcurementColors.StatusError)
+                        Text("Error: ${indexingProgress.error}", style = MaterialTheme.typography.labelSmall, color = ProcurementColors.AccentRedBright)
                     }
                 }
                 Spacer(Modifier.height(6.dp))
@@ -281,7 +285,7 @@ private fun DocumentRow(doc: DocumentListRow, query: String, onOpen: () -> Unit)
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            if (hasContentMatch) {
+            if (hasContentMatch && snippet != null) {
                 Spacer(Modifier.height(3.dp))
                 // Show the snippet with highlighted match
                 val annotatedString = buildAnnotatedString {
@@ -317,7 +321,7 @@ private fun DocumentRow(doc: DocumentListRow, query: String, onOpen: () -> Unit)
                 "INDEXED" -> Chip("indexed", ProcurementColors.StatusOk)
                 "STALE" -> Chip("stale", ProcurementColors.StatusWarn)
                 "NEEDS_OCR" -> Chip("needs OCR", ProcurementColors.StatusWarn)
-                "FAILED" -> Chip("failed", ProcurementColors.StatusError)
+                "FAILED" -> Chip("failed", ProcurementColors.AccentRedBright)
                 "UNSUPPORTED" -> Chip("unsupported", ProcurementColors.TextTertiary)
                 else -> { /* NOT_INDEXED - don't show */ }
             }
