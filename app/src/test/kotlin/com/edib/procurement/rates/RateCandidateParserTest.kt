@@ -57,7 +57,7 @@ class RateCandidateParserTest {
             رخام جلالة م٢ جنيه ٨
         """.trimIndent())
         val rows = RateCandidateParser.parse(doc, 1234L)
-        assertEquals(1, rows.size)
+        assertEquals("Unexpected heuristic rows: " + rows.map { it.evidenceText }, 1, rows.size)
         assertEquals(8.0, rows.single().rate, 0.0)
     }
 
