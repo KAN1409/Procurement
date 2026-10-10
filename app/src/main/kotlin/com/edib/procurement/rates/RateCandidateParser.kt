@@ -280,7 +280,7 @@ object RateCandidateParser {
         numbers: List<Double>
     ): Double? {
         val explicitPrice = Regex(
-            """(?i)(?:سعر\\s*(?:الوحدة|الوحده)?|الفئة|فئة|unit\\s*(?:rate|price)|rate|price)\\s*[:=\\-]?\\s*"""
+            """(?i)(?:سعر\s*(?:الوحدة|الوحده)?|الفئة|فئة|unit\s*(?:rate|price)|rate|price)\s*[:=\-]?\s*"""
         )
         val label = explicitPrice.find(line)
         if (label != null) {
@@ -307,16 +307,16 @@ object RateCandidateParser {
         if (unit == null) return null
         val unitMatch = UNIT_REGEX.find(line) ?: return null
         val prefix = line.substring(0, unitMatch.range.first)
-        if (!looksLikeDescription(prefix) || prefix.trim().matches(Regex("""(?i)(?:project|building|reference|ref|مشروع|مبنى|مبني|كود)\\s*[-#:]?\\s*[\\d٠-٩۰-۹]+"""))) return null
+        if (!looksLikeDescription(prefix) || prefix.trim().matches(Regex("""(?i)(?:project|building|reference|ref|مشروع|مبنى|مبني|كود)\s*[-#:]?\s*[\d٠-٩۰-۹]+"""))) return null
         val suffix = line.substring(unitMatch.range.last + 1).trim()
         val priceMatch = NUMBER_REGEX.find(suffix) ?: return null
         val beforePrice = suffix.substring(0, priceMatch.range.first).trim()
         val allowedBridge = beforePrice.isEmpty() ||
-            beforePrice.matches(Regex("""(?i)(?:egp|usd|eur|جنيه|ج\\.?\\s*م|[:=\\-])\\s*"""))
+            beforePrice.matches(Regex("""(?i)(?:egp|usd|eur|جنيه|ج\.?\s*م|[:=\-])\s*"""))
         if (!allowedBridge) return null
         val afterPrice = suffix.substring(priceMatch.range.last + 1).trim()
         if (afterPrice.isNotEmpty() &&
-            !afterPrice.matches(Regex("""(?i)(?:egp|usd|eur|جنيه|ج\\.?\\s*م|\\$|€)"""))) return null
+            !afterPrice.matches(Regex("""(?i)(?:egp|usd|eur|جنيه|ج\.?\s*م|\$|€)"""))) return null
         val rate = parseCommercialNumber(priceMatch.value) ?: return null
         return rate.takeIf(::plausibleRate)
     }
