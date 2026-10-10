@@ -55,11 +55,13 @@ import java.text.DecimalFormat
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.abs
 
 @Composable
 fun RatesScreen(
     vm: ProcurementViewModel,
     onAddRate: () -> Unit,
+    onFindRate: () -> Unit,
     onCheckRate: () -> Unit
 ) {
     val query by vm.rateQuery.collectAsStateWithLifecycle()
@@ -72,23 +74,34 @@ fun RatesScreen(
             .background(ProcurementColors.Graphite900)
     ) {
         ScreenHeader("Rates", "${count} commercial observations")
+        SearchField(
+            value = query,
+            onValueChange = vm::setRateQuery,
+            placeholder = "Search ledger by item, contractor, project, scope…",
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp)
+        )
+        Spacer(Modifier.height(7.dp))
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
         ) {
-            SearchField(
-                value = query,
-                onValueChange = vm::setRateQuery,
-                placeholder = "Search item, contractor, project, scope…",
+            OutlinedButton(
+                onClick = onFindRate,
                 modifier = Modifier.weight(1f)
-            )
-            Spacer(Modifier.width(8.dp))
-            OutlinedButton(onClick = onCheckRate) {
-                Text("CHECK")
+            ) {
+                Text("FIND RATES")
             }
-            Spacer(Modifier.width(6.dp))
+            OutlinedButton(
+                onClick = onCheckRate,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("COMPARE")
+            }
             Button(
                 onClick = onAddRate,
+                modifier = Modifier.weight(0.8f),
                 colors = ButtonDefaults.buttonColors(containerColor = ProcurementColors.AccentRed)
             ) {
                 Text("ADD")
@@ -125,7 +138,11 @@ fun RatesScreen(
 }
 
 @Composable
-private fun RateRow(vm: ProcurementViewModel, rate: RateListRow) {
+private fun RateRow(
+    vm: ProcurementViewModel,
+    rate: RateListRow,
+    targetRate: Double? = null
+) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -172,6 +189,18 @@ private fun RateRow(vm: ProcurementViewModel, rate: RateListRow) {
                     style = MaterialTheme.typography.labelSmall,
                     color = ProcurementColors.TextTertiary
                 )
+                if (targetRate != null) {
+                    val delta = rate.rate - targetRate
+                    Text(
+                        when {
+                            abs(delta) < 0.000001 -> "exact target"
+                            delta > 0 -> "+${MONEY.format(delta)} from target"
+                            else -> "${MONEY.format(delta)} from target"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ProcurementColors.TextSecondary
+                    )
+                }
             }
         }
 
@@ -260,9 +289,195 @@ private fun RateRow(vm: ProcurementViewModel, rate: RateListRow) {
 }
 
 @Composable
+fun FindRatesScreen(
+    vm: ProcurementViewModel,
+    onBack: () -> Unit,
+    onCompare: () -> Unit
+) {
+    val query by vm.rateFindQuery.collectAsStateWithLifecycle()
+    val allRows by vm.rateFindResults.collectAsStateWithLifecycle()
+
+    var targetText by rememberSaveable { mutableStateOf("") }
+    var targetCurrency by rememberSaveable { mutableStateOf("EGP") }
+    var selectedStatus by rememberSaveable { mutableStateOf("ALL") }
+    var selectedScope by rememberSaveable { mutableStateOf("ANY") }
+
+    val target = targetText.replace(",", "").trim().takeIf { it.isNotEmpty() }?.toDoubleOrNull()
+    val targetInvalid = targetText.isNotBlank() && target == null
+    val currencyNormalized = targetCurrency.trim().uppercase()
+
+    val results = remember(
+        allRows,
+        target,
+        targetInvalid,
+        currencyNormalized,
+        selectedStatus,
+        selectedScope
+    ) {
+        val filtered = allRows.asSequence()
+            .filter { selectedStatus == "ALL" || it.status == selectedStatus }
+            .filter { selectedScope == "ANY" || it.scope == selectedScope }
+            .filter {
+                target == null || targetInvalid ||
+                    currencyNormalized.isBlank() ||
+                    it.currency.trim().uppercase() == currencyNormalized
+            }
+            .toList()
+
+        if (target != null && !targetInvalid) {
+            filtered.sortedWith(
+                compareBy<RateListRow> { abs(it.rate - target) }
+                    .thenByDescending { it.observedDate }
+                    .thenByDescending { it.id }
+            )
+        } else {
+            filtered.sortedWith(
+                compareByDescending<RateListRow> { it.observedDate }
+                    .thenByDescending { it.id }
+            )
+        }
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(ProcurementColors.Graphite900)
+    ) {
+        ScreenHeader("Find Rates", "broad commercial memory · unit is optional")
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp)
+        ) {
+            Panel {
+                Text(
+                    "Search first. Unit is a result, not a requirement.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ProcurementColors.TextPrimary
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    "Add an optional target price to rank related rates by price proximity. Different units stay visible and are never converted.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ProcurementColors.TextTertiary
+                )
+            }
+            Spacer(Modifier.height(9.dp))
+            SearchField(
+                value = query,
+                onValueChange = vm::setRateFindQuery,
+                placeholder = "e.g. رخام, وزرة, عبد المقصود, Galala…",
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(7.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                RateField(
+                    label = "Around rate (optional)",
+                    value = targetText,
+                    onValueChange = { targetText = it },
+                    modifier = Modifier.weight(1.4f)
+                )
+                RateField(
+                    label = "Currency",
+                    value = targetCurrency,
+                    onValueChange = { targetCurrency = it },
+                    modifier = Modifier.weight(0.8f)
+                )
+            }
+            if (targetInvalid) {
+                Text(
+                    "Enter a valid number, or leave target rate blank.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ProcurementColors.AccentRedBright
+                )
+            } else if (target != null) {
+                Text(
+                    "Sorted by distance from ${MONEY.format(target)} ${currencyNormalized.ifBlank { "EGP" }}. Unit is not used as a filter.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ProcurementColors.TextTertiary
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+            SectionLabel("Status")
+            ChoiceRow(
+                choices = listOf("ALL") + RateStatus.all,
+                selected = selectedStatus,
+                label = { it },
+                onSelect = { selectedStatus = it }
+            )
+            Spacer(Modifier.height(8.dp))
+            SectionLabel("Scope · optional")
+            ChoiceRow(
+                choices = listOf("ANY") + RateScope.all,
+                selected = selectedScope,
+                label = { if (it == "ANY") "ANY" else scopeLabel(it) },
+                onSelect = { selectedScope = it }
+            )
+            Spacer(Modifier.height(5.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "${results.size} result(s)",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = ProcurementColors.TextSecondary
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    TextButton(onClick = onBack) {
+                        Text("BACK", color = ProcurementColors.TextSecondary)
+                    }
+                    TextButton(
+                        onClick = {
+                            if (query.isNotBlank()) vm.setRateCheckChoiceQuery(query)
+                            onCompare()
+                        }
+                    ) {
+                        Text("COMPARE A PRICE", color = ProcurementColors.AccentRedBright)
+                    }
+                }
+            }
+        }
+
+        if (results.isEmpty()) {
+            EmptyState(
+                when {
+                    query.isBlank() && target == null ->
+                        "Search for an item, material, contractor or project. You can also enter only a target price."
+                    else -> "No related commercial rates found."
+                }
+            )
+        } else {
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    horizontal = 14.dp,
+                    vertical = 4.dp
+                )
+            ) {
+                items(results, key = { it.id }) { rate ->
+                    RateRow(
+                        vm = vm,
+                        rate = rate,
+                        targetRate = target?.takeIf { !targetInvalid }
+                    )
+                    HorizontalDivider(
+                        color = ProcurementColors.Graphite700,
+                        thickness = 1.dp
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun RateCheckScreen(
     vm: ProcurementViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onFindRates: () -> Unit
 ) {
     val contractors by vm.contractors.collectAsStateWithLifecycle()
     val projects by vm.projects.collectAsStateWithLifecycle()
@@ -311,7 +526,7 @@ fun RateCheckScreen(
             .fillMaxSize()
             .background(ProcurementColors.Graphite900)
     ) {
-        ScreenHeader("Rate Check", "proposed rate vs strict awarded history")
+        ScreenHeader("Compare Price", "proposed rate vs directly comparable awarded history")
         Column(
             Modifier
                 .fillMaxSize()
@@ -580,7 +795,7 @@ fun RateCheckScreen(
 
             result?.let {
                 Spacer(Modifier.height(16.dp))
-                RateCheckResultPanel(vm, it)
+                RateCheckResultPanel(vm, it, onFindRates)
             }
             Spacer(Modifier.height(24.dp))
         }
@@ -590,7 +805,8 @@ fun RateCheckScreen(
 @Composable
 private fun RateCheckResultPanel(
     vm: ProcurementViewModel,
-    result: RateCheckResult
+    result: RateCheckResult,
+    onFindRates: () -> Unit
 ) {
     val basis = result.comparisonBasis
     val verdictTint = when (result.verdict) {
@@ -604,7 +820,7 @@ private fun RateCheckResultPanel(
     Panel {
         Text(
             when (result.verdict) {
-                RateCheckVerdict.NO_COMPARABLE -> "NO STRICT COMPARABLE"
+                RateCheckVerdict.NO_COMPARABLE -> "NO DIRECT COMPARABLE"
                 RateCheckVerdict.SAME -> "SAME AS BASIS"
                 RateCheckVerdict.LOWER -> "LOWER THAN BASIS"
                 RateCheckVerdict.HIGHER -> "HIGHER THAN BASIS"
@@ -649,6 +865,17 @@ private fun RateCheckResultPanel(
                 color = ProcurementColors.TextTertiary,
                 modifier = Modifier.padding(bottom = 3.dp)
             )
+        }
+        if (result.verdict == RateCheckVerdict.NO_COMPARABLE) {
+            Spacer(Modifier.height(7.dp))
+            OutlinedButton(
+                onClick = {
+                    vm.setRateFindQuery(result.request.itemRaw)
+                    onFindRates()
+                }
+            ) {
+                Text("VIEW RELATED RATES")
+            }
         }
     }
 
