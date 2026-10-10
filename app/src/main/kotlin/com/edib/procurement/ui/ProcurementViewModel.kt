@@ -20,6 +20,8 @@ import com.edib.procurement.database.ContractorDetail
 import com.edib.procurement.database.RateDraft
 import com.edib.procurement.database.RateListRow
 import com.edib.procurement.database.RateSourceChoice
+import com.edib.procurement.rates.RateCheckRequest
+import com.edib.procurement.rates.RateCheckResult
 import com.edib.procurement.database.UnlinkedDocumentRow
 import com.edib.procurement.matching.MatchingReport
 import com.edib.procurement.database.LinkEntryRow
@@ -139,6 +141,12 @@ class ProcurementViewModel(app: Application) : AndroidViewModel(app) {
     val rateSourceChoices: StateFlow<List<RateSourceChoice>> =
         _rateSourceQuery.flatMapLatest { q -> repo.rateSourceDocuments(q) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val _rateCheckResult = MutableStateFlow<RateCheckResult?>(null)
+    val rateCheckResult: StateFlow<RateCheckResult?> = _rateCheckResult.asStateFlow()
+
+    private val _rateCheckRunning = MutableStateFlow(false)
+    val rateCheckRunning: StateFlow<Boolean> = _rateCheckRunning.asStateFlow()
 
     init {
         refreshConfig()
@@ -389,6 +397,24 @@ fun rescanDocumentTree() {
                 say(e.message ?: "Could not save rate", isError = true)
             }
         }
+    }
+
+    fun checkRate(request: RateCheckRequest) {
+        viewModelScope.launch {
+            _rateCheckRunning.value = true
+            try {
+                _rateCheckResult.value = repo.checkRate(request)
+            } catch (e: Throwable) {
+                _rateCheckResult.value = null
+                say(e.message ?: "Could not check rate", isError = true)
+            } finally {
+                _rateCheckRunning.value = false
+            }
+        }
+    }
+
+    fun clearRateCheck() {
+        _rateCheckResult.value = null
     }
 
     fun deleteRate(id: Long) {
