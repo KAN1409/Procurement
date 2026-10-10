@@ -67,6 +67,8 @@ import com.edib.procurement.ui.screens.ContractorsScreen
 import com.edib.procurement.ui.screens.DocumentsScreen
 import com.edib.procurement.ui.screens.FollowUpScreen
 import com.edib.procurement.ui.screens.ProjectDetailScreen
+import com.edib.procurement.ui.screens.RatesScreen
+import com.edib.procurement.ui.screens.AddRateScreen
 import com.edib.procurement.ui.screens.GroupDetailScreen
 import com.edib.procurement.ui.screens.HomeScreen
 import com.edib.procurement.ui.screens.NeedsReviewScreen
@@ -100,6 +102,7 @@ private enum class MoreTab(
     val hint: String,
     val icon: ImageVector
 ) {
+    RATES("rates", "Rates", "Trusted commercial rates with source evidence", Icons.Filled.Search),
     CONTRACTORS("contractors", "Contractors", "Resolved and unresolved contractors", Icons.Filled.Person),
     NEEDS_REVIEW("needs-review", "Needs Review", "Suggestions, unlinked files, contractors", Icons.Filled.Info),
     AI_PACKS("ai-packs", "AI Packs", "Generated packs, history and storage", Icons.Filled.List),
@@ -243,6 +246,18 @@ fun ProcurementApp() {
                         onPickFolder = openFolder,
                         onRescanFolder = { vm.rescanDocumentTree() },
                         onOpenPack = { nav.openPack() }
+                    )
+                }
+                composable(MoreTab.RATES.route) {
+                    RatesScreen(
+                        vm = vm,
+                        onAddRate = { nav.navigate("rate-add") }
+                    )
+                }
+                composable("rate-add") {
+                    AddRateScreen(
+                        vm = vm,
+                        onBack = { nav.popBackStack() }
                     )
                 }
                 composable(MoreTab.CONTRACTORS.route) {
