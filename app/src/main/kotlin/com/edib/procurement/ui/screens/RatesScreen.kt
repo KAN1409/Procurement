@@ -26,6 +26,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +46,7 @@ import com.edib.procurement.database.RateStatus
 import com.edib.procurement.rates.RateCheckRequest
 import com.edib.procurement.rates.RateCheckResult
 import com.edib.procurement.rates.RateCheckVerdict
+import com.edib.procurement.rates.parseCommercialNumber
 import com.edib.procurement.rates.rankRelatedRates
 import com.edib.procurement.ui.ProcurementViewModel
 import com.edib.procurement.ui.components.Chip
@@ -63,11 +65,13 @@ fun RatesScreen(
     vm: ProcurementViewModel,
     onAddRate: () -> Unit,
     onFindRate: () -> Unit,
-    onCheckRate: () -> Unit
+    onCheckRate: () -> Unit,
+    onCandidates: () -> Unit
 ) {
     val query by vm.rateQuery.collectAsStateWithLifecycle()
     val rates by vm.rates.collectAsStateWithLifecycle()
     val count by vm.rateCount.collectAsStateWithLifecycle()
+    val candidateCount by vm.rateCandidateCount.collectAsStateWithLifecycle()
 
     Column(
         Modifier
@@ -100,12 +104,24 @@ fun RatesScreen(
             ) {
                 Text("COMPARE")
             }
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            OutlinedButton(
+                onClick = onCandidates,
+                modifier = Modifier.weight(1.4f)
+            ) {
+                Text("CANDIDATES $candidateCount")
+            }
             Button(
                 onClick = onAddRate,
                 modifier = Modifier.weight(0.8f),
                 colors = ButtonDefaults.buttonColors(containerColor = ProcurementColors.AccentRed)
             ) {
-                Text("ADD")
+                Text("ADD RATE")
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -303,7 +319,7 @@ fun FindRatesScreen(
     var selectedStatus by rememberSaveable { mutableStateOf("ALL") }
     var selectedScope by rememberSaveable { mutableStateOf("ANY") }
 
-    val target = targetText.replace(",", "").trim().takeIf { it.isNotEmpty() }?.toDoubleOrNull()
+    val target = targetText.trim().takeIf { it.isNotEmpty() }?.let(::parseCommercialNumber)
     val targetInvalid = targetText.isNotBlank() && target == null
     val currencyNormalized = targetCurrency.trim().uppercase()
 
@@ -737,10 +753,10 @@ fun RateCheckScreen(
                 }
                 Button(
                     onClick = {
-                        val proposed = proposedRate.replace(",", "").trim().toDoubleOrNull()
-                        val qty = quantity.replace(",", "").trim()
+                        val proposed = parseCommercialNumber(proposedRate)
+                        val qty = quantity.trim()
                             .takeIf { it.isNotEmpty() }
-                            ?.toDoubleOrNull()
+                            ?.let(::parseCommercialNumber)
 
                         localError = when {
                             item.isBlank() -> "Item description is required."
@@ -983,6 +999,7 @@ fun AddRateScreen(
     val projects by vm.projects.collectAsStateWithLifecycle()
     val sourceQuery by vm.rateSourceQuery.collectAsStateWithLifecycle()
     val sourceChoices by vm.rateSourceChoices.collectAsStateWithLifecycle()
+    val candidate by vm.selectedRateCandidate.collectAsStateWithLifecycle()
 
     var item by rememberSaveable { mutableStateOf("") }
     var material by rememberSaveable { mutableStateOf("") }
@@ -1006,6 +1023,30 @@ fun AddRateScreen(
     var selectedSource by remember { mutableStateOf<RateSourceChoice?>(null) }
     var localError by rememberSaveable { mutableStateOf<String?>(null) }
 
+    LaunchedEffect(candidate?.id) {
+        candidate?.let { c ->
+            item = c.itemRaw
+            unit = c.unitRaw.orEmpty()
+            rate = MONEY.format(c.rate).replace(",", "")
+            currency = c.currency ?: "EGP"
+            scope = c.inferredScope ?: RateScope.OTHER
+            status = RateStatus.OBSERVED
+            evidenceLocator = c.evidenceLocator
+            evidenceText = c.evidenceText
+            selectedSource = c.sourceDocumentId?.let { documentId ->
+                RateSourceChoice(
+                    id = documentId,
+                    displayName = c.sourceFileName,
+                    relativePath = c.sourceRelativePath,
+                    documentUri = c.sourceUri,
+                    mimeType = c.sourceMimeType,
+                    extension = c.sourceExtension,
+                    contentState = "INDEXED"
+                )
+            }
+        }
+    }
+
     val contractorSuggestions = contractors
         .filter {
             contractorText.isNotBlank() &&
@@ -1025,7 +1066,10 @@ fun AddRateScreen(
             .fillMaxSize()
             .background(ProcurementColors.Graphite900)
     ) {
-        ScreenHeader("Add rate", "commercial observation + source evidence")
+        ScreenHeader(
+            if (candidate != null) "Review candidate" else "Add rate",
+            if (candidate != null) "verify extracted values before saving" else "commercial observation + source evidence"
+        )
         Column(
             Modifier
                 .fillMaxSize()
@@ -1219,17 +1263,20 @@ fun AddRateScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedButton(
-                    onClick = onBack,
+                    onClick = {
+                        vm.clearSelectedRateCandidate()
+                        onBack()
+                    },
                     modifier = Modifier.weight(1f)
                 ) {
                     Text("CANCEL")
                 }
                 Button(
                     onClick = {
-                        val rateNumber = rate.replace(",", "").trim().toDoubleOrNull()
-                        val quantityNumber = quantity.replace(",", "").trim()
+                        val rateNumber = parseCommercialNumber(rate)
+                        val quantityNumber = quantity.trim()
                             .takeIf { it.isNotEmpty() }
-                            ?.toDoubleOrNull()
+                            ?.let(::parseCommercialNumber)
                         val dateMillis = parseRateDate(date)
 
                         localError = when {
@@ -1263,6 +1310,7 @@ fun AddRateScreen(
                                     status = status,
                                     observedDate = dateMillis!!,
                                     sourceDocumentId = selectedSource?.id,
+                                    candidateId = candidate?.id,
                                     evidenceLocator = evidenceLocator,
                                     evidenceText = evidenceText,
                                     notes = notes
