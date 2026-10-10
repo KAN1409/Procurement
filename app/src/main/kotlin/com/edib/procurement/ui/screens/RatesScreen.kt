@@ -268,6 +268,7 @@ fun RateCheckScreen(
     val projects by vm.projects.collectAsStateWithLifecycle()
     val result by vm.rateCheckResult.collectAsStateWithLifecycle()
     val running by vm.rateCheckRunning.collectAsStateWithLifecycle()
+    val rateChoices by vm.rateCheckChoices.collectAsStateWithLifecycle()
 
     var item by rememberSaveable { mutableStateOf("") }
     var material by rememberSaveable { mutableStateOf("") }
@@ -284,6 +285,7 @@ fun RateCheckScreen(
     var proposedRate by rememberSaveable { mutableStateOf("") }
     var currency by rememberSaveable { mutableStateOf("EGP") }
     var localError by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedTemplateId by rememberSaveable { mutableStateOf<Long?>(null) }
 
     val contractorSuggestions = contractors
         .filter {
@@ -324,7 +326,7 @@ fun RateCheckScreen(
                 )
                 Spacer(Modifier.height(3.dp))
                 Text(
-                    "Only exact item + material + specification + dimensions + unit + scope + currency can become a comparison basis.",
+                    "Only exact item + material + specification + dimensions + controlled unit equivalence + scope + currency can become a comparison basis.",
                     style = MaterialTheme.typography.labelSmall,
                     color = ProcurementColors.TextTertiary
                 )
@@ -334,8 +336,43 @@ fun RateCheckScreen(
             SectionLabel("Proposed item")
             RateField("Item description *", item, onValueChange = {
                 item = it
+                selectedTemplateId = null
+                vm.setRateCheckChoiceQuery(it)
                 invalidate()
             })
+            if (item.isNotBlank() && selectedTemplateId == null && rateChoices.isNotEmpty()) {
+                Text(
+                    "Use an existing awarded item to avoid wording/unit mismatches:",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ProcurementColors.TextTertiary,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                SuggestionPanel {
+                    rateChoices.take(6).forEach { choice ->
+                        SuggestionLine(
+                            title = choice.itemRaw,
+                            subtitle = buildList {
+                                choice.material?.takeIf { it.isNotBlank() }?.let(::add)
+                                choice.dimensions?.takeIf { it.isNotBlank() }?.let(::add)
+                                add(choice.unit)
+                                add(scopeLabel(choice.scope))
+                                add("${MONEY.format(choice.rate)} ${choice.currency} awarded")
+                            }.joinToString(" · ")
+                        ) {
+                            item = choice.itemRaw
+                            material = choice.material.orEmpty()
+                            specification = choice.specification.orEmpty()
+                            dimensions = choice.dimensions.orEmpty()
+                            unit = choice.unit
+                            scope = choice.scope
+                            currency = choice.currency
+                            selectedTemplateId = choice.id
+                            vm.clearRateCheckChoiceQuery()
+                            invalidate()
+                        }
+                    }
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 RateField(
                     label = "Material",
@@ -490,6 +527,7 @@ fun RateCheckScreen(
                 OutlinedButton(
                     onClick = {
                         vm.clearRateCheck()
+                        vm.clearRateCheckChoiceQuery()
                         onBack()
                     },
                     modifier = Modifier.weight(1f)
