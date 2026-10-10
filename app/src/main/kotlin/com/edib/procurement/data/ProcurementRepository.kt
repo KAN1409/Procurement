@@ -42,6 +42,9 @@ import com.edib.procurement.database.RateSourceChoice
 import com.edib.procurement.database.RateStatus
 import com.edib.procurement.database.normalizeRateItem
 import com.edib.procurement.database.normalizeRateUnit
+import com.edib.procurement.rates.RateCheckRequest
+import com.edib.procurement.rates.RateCheckResult
+import com.edib.procurement.rates.RateComparator
 import com.edib.procurement.database.SuggestionRow
 import com.edib.procurement.database.UnlinkedDocumentRow
 import com.edib.procurement.database.UnresolvedContractorRow
@@ -504,6 +507,24 @@ fun homeCounts(): Flow<HomeCounts> {
             contractorId = contractorId
         )
     }
+
+    /**
+     * Checks a proposed rate against trusted awarded history.
+     *
+     * The DAO prefilters exact item/unit/scope/currency. RateComparator then
+     * applies the stricter material/specification/dimensions gate and chooses
+     * contractor history before context-ranked comparables.
+     */
+    suspend fun checkRate(request: RateCheckRequest): RateCheckResult =
+        withContext(Dispatchers.IO) {
+            val candidates = rateDao.awardedCandidates(
+                itemNormalized = normalizeRateItem(request.itemRaw),
+                unitNormalized = normalizeRateUnit(request.unit),
+                scope = request.scope,
+                currency = request.currency.trim().uppercase()
+            )
+            RateComparator.compare(request, candidates)
+        }
 
     suspend fun deleteRate(id: Long) = withContext(Dispatchers.IO) {
         rateDao.delete(id)
