@@ -22,9 +22,14 @@ class RateNormalizationTest {
         assertEquals("lm", normalizeRateUnit(" LM "))
         assertEquals("lm", normalizeRateUnit("متر طولي"))
         assertEquals("m2", normalizeRateUnit("m2"))
+        assertEquals("m2", normalizeRateUnit("M2"))
         assertEquals("m2", normalizeRateUnit("m²"))
+        assertEquals("m2", normalizeRateUnit("م٢"))
+        assertEquals("m2", normalizeRateUnit("م²"))
+        assertEquals("m2", normalizeRateUnit("مترمربع"))
         assertEquals("m2", normalizeRateUnit("sqm"))
         assertEquals("m3", normalizeRateUnit("m³"))
+        assertEquals("m3", normalizeRateUnit("م٣"))
         assertEquals("custom-unit", normalizeRateUnit("Custom-Unit"))
     }
 }
