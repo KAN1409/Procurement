@@ -31,6 +31,8 @@ class RateCandidateScanner(
         var inserted = 0
         val batchSize = 25
 
+        dao.markChangedOrMissingPendingStale()
+
         while (currentCoroutineContext().isActive) {
             val docs = dao.indexedCorpusDocuments(batchSize, offset)
             if (docs.isEmpty()) break
