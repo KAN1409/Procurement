@@ -68,6 +68,7 @@ import com.edib.procurement.ui.screens.DocumentsScreen
 import com.edib.procurement.ui.screens.FollowUpScreen
 import com.edib.procurement.ui.screens.ProjectDetailScreen
 import com.edib.procurement.ui.screens.RatesScreen
+import com.edib.procurement.ui.screens.FindRatesScreen
 import com.edib.procurement.ui.screens.RateCheckScreen
 import com.edib.procurement.ui.screens.AddRateScreen
 import com.edib.procurement.ui.screens.GroupDetailScreen
@@ -253,13 +254,22 @@ fun ProcurementApp() {
                     RatesScreen(
                         vm = vm,
                         onAddRate = { nav.navigate("rate-add") },
+                        onFindRate = { nav.navigate("rate-find") },
                         onCheckRate = { nav.navigate("rate-check") }
+                    )
+                }
+                composable("rate-find") {
+                    FindRatesScreen(
+                        vm = vm,
+                        onBack = { nav.popBackStack() },
+                        onCompare = { nav.navigate("rate-check") }
                     )
                 }
                 composable("rate-check") {
                     RateCheckScreen(
                         vm = vm,
-                        onBack = { nav.popBackStack() }
+                        onBack = { nav.popBackStack() },
+                        onFindRates = { nav.navigate("rate-find") }
                     )
                 }
                 composable("rate-add") {
