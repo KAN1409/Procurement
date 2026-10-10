@@ -87,7 +87,7 @@ class PackChecksumTest {
     }
 
     @Test
-    fun `a checksum taken before a rewrite would not match`() {
+    fun `a checksum taken before a rewrite would not match`() = runBlocking {
         // Guards the specific bug: this is why the order matters.
         val dir = tmp.newFolder("c2")
         val out = File(dir, "Q_AI_PACK_01.zip")
