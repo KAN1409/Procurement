@@ -1027,8 +1027,11 @@ fun AddRateScreen(
         candidate?.let { c ->
             item = c.itemRaw
             unit = c.unitRaw.orEmpty()
+            quantity = c.quantity?.let { MONEY.format(it).replace(",", "") }.orEmpty()
             rate = MONEY.format(c.rate).replace(",", "")
-            currency = c.currency ?: "EGP"
+            // Never infer commercial currency or observation date from file metadata.
+            currency = c.currency.orEmpty()
+            date = ""
             scope = c.inferredScope ?: RateScope.OTHER
             status = RateStatus.OBSERVED
             evidenceLocator = c.evidenceLocator
@@ -1076,6 +1079,22 @@ fun AddRateScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 14.dp, vertical = 4.dp)
         ) {
+            if (candidate != null) {
+                Panel {
+                    Text(
+                        "Extracted candidate · not trusted yet",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = ProcurementColors.StatusWarn
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        "Verify unit, currency, date, scope and commercial status against the source before saving.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ProcurementColors.TextTertiary
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+            }
             SectionLabel("Commercial item")
             RateField("Item description *", item) { item = it }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1284,6 +1303,7 @@ fun AddRateScreen(
                             unit.isBlank() -> "Unit is required."
                             rateNumber == null || rateNumber <= 0.0 -> "Enter a valid rate greater than zero."
                             quantity.isNotBlank() && quantityNumber == null -> "Quantity is not a valid number."
+                            currency.isBlank() -> "Currency is required."
                             dateMillis == null -> "Date must be YYYY-MM-DD."
                             status in RateStatus.sourceRequired && selectedSource == null ->
                                 "${status} requires a source document."
