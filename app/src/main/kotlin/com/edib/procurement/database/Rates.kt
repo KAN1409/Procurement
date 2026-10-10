@@ -341,4 +341,63 @@ interface RateDao {
         scope: String,
         contractorId: Long?
     ): RateListRow?
+
+    /**
+     * Candidate pool for Rate Check.
+     *
+     * This query only admits awarded observations with exact item/unit/scope/
+     * currency. Material, specification and dimensions are filtered in Kotlin
+     * with the same conservative whitespace/case normalization used by the UI.
+     * No averages, width scaling or scope conversion happen here.
+     */
+    @Query(
+        """
+        SELECT
+            r.id AS id,
+            r.itemRaw AS itemRaw,
+            r.itemNormalized AS itemNormalized,
+            r.material AS material,
+            r.specification AS specification,
+            r.dimensions AS dimensions,
+            r.unit AS unit,
+            r.scope AS scope,
+            r.contractorId AS contractorId,
+            COALESCE(c.canonicalName, r.contractorRaw) AS contractorName,
+            r.projectId AS projectId,
+            COALESCE(p.canonicalName, r.projectRaw) AS projectName,
+            r.location AS location,
+            r.quantity AS quantity,
+            r.rate AS rate,
+            r.currency AS currency,
+            r.status AS status,
+            r.observedDate AS observedDate,
+            r.sourceDocumentId AS sourceDocumentId,
+            COALESCE(d.displayName, r.sourceFileNameSnapshot) AS sourceFileName,
+            COALESCE(d.relativePath, r.sourceRelativePathSnapshot) AS sourceRelativePath,
+            COALESCE(d.documentUri, r.sourceUriSnapshot) AS sourceUri,
+            d.mimeType AS sourceMimeType,
+            d.extension AS sourceExtension,
+            r.evidenceLocator AS evidenceLocator,
+            r.evidenceText AS evidenceText,
+            r.notes AS notes
+        FROM rate_observation r
+        LEFT JOIN contractor c ON c.id = r.contractorId
+        LEFT JOIN project p ON p.id = r.projectId
+        LEFT JOIN document d ON d.id = r.sourceDocumentId
+        WHERE r.status = 'AWARDED'
+          AND r.itemNormalized = :itemNormalized
+          AND LOWER(TRIM(r.unit)) = :unitNormalized
+          AND r.scope = :scope
+          AND UPPER(TRIM(r.currency)) = :currency
+        ORDER BY r.observedDate DESC, r.id DESC
+        LIMIT :limit
+        """
+    )
+    suspend fun awardedCandidates(
+        itemNormalized: String,
+        unitNormalized: String,
+        scope: String,
+        currency: String,
+        limit: Int = 200
+    ): List<RateListRow>
 }
