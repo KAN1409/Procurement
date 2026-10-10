@@ -47,6 +47,8 @@ import com.edib.procurement.followup.ImportReport
 import com.edib.procurement.followup.TextNormalizer
 import com.edib.procurement.aipack.AiPackBuilder
 import com.edib.procurement.aipack.CorpusValidator
+import com.edib.procurement.aipack.ContentIndexer
+import com.edib.procurement.aipack.ContentIndexingService
 import com.edib.procurement.aipack.MultipartAiPackBuilder
 import com.edib.procurement.aipack.MultipartResult
 import com.edib.procurement.aipack.PackSizeEstimator
