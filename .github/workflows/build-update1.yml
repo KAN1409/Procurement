@@ -33,28 +33,29 @@ jobs:
           java-version: "17"
           cache: gradle
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install required Android SDK packages
+      - name: Prepare Android SDK and Gradle environment
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;36.1.0"
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/sdk}}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -name sdkmanager -type f 2>/dev/null | head -n1)"
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(command -v sdkmanager || true)"
+          fi
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;36.1.0"
 
-      - name: Remove Android Harness-only Gradle overrides
-        shell: bash
-        run: |
           sed -i '/^android\.sdk\.path=/d' gradle.properties
           sed -i '/^systemProp\.java\.library\.path=/d' gradle.properties
           sed -i '/^android\.aapt2FromMavenOverride=/d' gradle.properties
+
           chmod +x gradlew
 
       - name: Verify signing keystore exists
         shell: bash
         run: |
           test -f keystore/debug.keystore
-          keytool -list -keystore keystore/debug.keystore -storepass android -alias androiddebugkey >/dev/null
+          keytool -list             -keystore keystore/debug.keystore             -storepass android             -alias androiddebugkey >/dev/null
 
       - name: Build debug APK
         shell: bash
@@ -73,7 +74,13 @@ jobs:
           mkdir -p build-artifacts
           cp "$APK" build-artifacts/Procurement-Update1-debug.apk
           sha256sum "$APK" | tee build-artifacts/APK_SHA256.txt
-          "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --print-certs "$APK" | tee build-artifacts/APK_SIGNING_CERT.txt
+
+          APKSIGNER="$ANDROID_HOME/build-tools/36.1.0/apksigner"
+          if [ ! -x "$APKSIGNER" ]; then
+            APKSIGNER="$ANDROID_SDK_ROOT/build-tools/36.1.0/apksigner"
+          fi
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --print-certs "$APK" | tee build-artifacts/APK_SIGNING_CERT.txt
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
