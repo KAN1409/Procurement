@@ -132,7 +132,7 @@ class ContentIndexer(
                 is DocxTextReader.Block.Table -> block.rows.joinToString("\n") { row -> row.joinToString("\t") }
             }
         }
-        IndexResult.Success(text.trim(), "docx", EXTRACTOR_VERSION_DOCX)
+        return IndexResult.Success(text.trim(), "docx", EXTRACTOR_VERSION_DOCX)
     }
 
     private fun indexWorkbook(input: InputStream, doc: DocumentEntity): IndexResult {
@@ -162,15 +162,15 @@ class ContentIndexer(
         if (!hasContent) {
             return IndexResult.Unsupported("workbook contained no extractable cell data")
         }
-        IndexResult.Success(textBuilder.toString().trim(), "poi", EXTRACTOR_VERSION_XLSX)
+        return IndexResult.Success(textBuilder.toString().trim(), "poi", EXTRACTOR_VERSION_XLSX)
     }
 
     private fun indexPlainText(input: InputStream, doc: DocumentEntity): IndexResult {
-        val text = input.readText().trim()
+        val text = input.bufferedReader().use { it.readText() }.trim()
         if (text.isEmpty()) {
             return IndexResult.Unsupported("text file is empty")
         }
-        IndexResult.Success(text, "text", EXTRACTOR_VERSION_TEXT)
+        return IndexResult.Success(text, "text", EXTRACTOR_VERSION_TEXT)
     }
 
     /**
