@@ -287,4 +287,55 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
         )
     }
 }
+
+    /**
+     * v6 -> v7: Review-only rate candidates extracted from indexed source text.
+     *
+     * Candidates are not trusted commercial facts. They stay separate from
+     * rate_observation until the user explicitly reviews and confirms one.
+     */
+    val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS rate_candidate (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    sourceKey TEXT NOT NULL,
+                    sourceDocumentId INTEGER,
+                    sourceFileNameSnapshot TEXT NOT NULL,
+                    sourceRelativePathSnapshot TEXT NOT NULL,
+                    sourceUriSnapshot TEXT NOT NULL,
+                    sourceModifiedAt INTEGER NOT NULL,
+                    sourceExtension TEXT,
+                    sourceMimeType TEXT,
+                    itemRaw TEXT NOT NULL,
+                    unitRaw TEXT,
+                    quantity REAL,
+                    rate REAL NOT NULL,
+                    currency TEXT,
+                    inferredScope TEXT,
+                    evidenceLocator TEXT NOT NULL,
+                    evidenceText TEXT NOT NULL,
+                    confidence INTEGER NOT NULL,
+                    detectionMethod TEXT NOT NULL,
+                    parserVersion TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    confirmedRateId INTEGER,
+                    createdAt INTEGER NOT NULL,
+                    reviewedAt INTEGER,
+                    FOREIGN KEY(sourceDocumentId) REFERENCES document(id)
+                        ON UPDATE NO ACTION ON DELETE SET NULL,
+                    FOREIGN KEY(confirmedRateId) REFERENCES rate_observation(id)
+                        ON UPDATE NO ACTION ON DELETE SET NULL
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_rate_candidate_sourceKey ON rate_candidate(sourceKey)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_rate_candidate_sourceDocumentId ON rate_candidate(sourceDocumentId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_rate_candidate_status ON rate_candidate(status)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_rate_candidate_confidence ON rate_candidate(confidence)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_rate_candidate_confirmedRateId ON rate_candidate(confirmedRateId)")
+        }
+    }
+
 }
