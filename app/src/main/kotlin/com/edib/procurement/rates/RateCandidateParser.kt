@@ -3,6 +3,7 @@ package com.edib.procurement.rates
 import com.edib.procurement.database.RateCandidateEntity
 import com.edib.procurement.database.RateCorpusDocument
 import com.edib.procurement.database.RateScope
+import com.edib.procurement.database.normalizeRateUnit
 import java.security.MessageDigest
 import java.util.Locale
 
