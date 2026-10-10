@@ -126,7 +126,7 @@ dependencies {
     // Room migration tests execute on the JVM through Robolectric so CI can
     // validate Android database behavior without an emulator.
     testImplementation("androidx.test:core:1.5.0")
-    testImplementation("org.robolectric:robolectric:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.17")
     // The real org.json, so manifest compatibility is asserted by parsing the
     // output rather than by string matching. The android.jar stub throws instead.
     testImplementation("org.json:json:20240303")
