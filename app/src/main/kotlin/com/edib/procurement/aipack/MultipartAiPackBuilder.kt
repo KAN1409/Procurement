@@ -6,6 +6,7 @@ import com.edib.procurement.database.AiPackDao
 import com.edib.procurement.database.AiPackEntity
 import com.edib.procurement.database.AiPackSourceEntity
 import com.edib.procurement.database.EntryRow
+import com.edib.procurement.database.DocumentDao
 import com.edib.procurement.database.PackDao
 import com.edib.procurement.database.PackDocumentRow
 import com.edib.procurement.database.PackLinkRow
@@ -584,7 +585,7 @@ class MultipartAiPackBuilder(
         }
     }
 
-    private fun writeBody(
+    private suspend fun writeBody(
         text: PackTextWriter,
         scope: PackScope,
         partUnits: List<PackSplitter.Unit>,
