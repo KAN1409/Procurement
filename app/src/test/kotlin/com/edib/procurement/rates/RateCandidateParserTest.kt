@@ -48,6 +48,30 @@ class RateCandidateParserTest {
         assertEquals("EGP", rows.single().currency)
     }
 
+    @Test
+    fun referencesAndCurrencyDoNotBecomeRates() {
+        val doc = source("""
+            Project 8 EGP building reference
+            مبنى ٣ جنيه مشروع تجاري
+            Marble project reference 8 m2
+            رخام جلالة م٢ جنيه ٨
+        """.trimIndent())
+        val rows = RateCandidateParser.parse(doc, 1234L)
+        assertEquals(1, rows.size)
+        assertEquals(8.0, rows.single().rate, 0.0)
+    }
+
+    @Test
+    fun legitimateSmallRateAndArabicDigitsSurvive() {
+        val rows = RateCandidateParser.parse(source("""
+            Marble skirting lm 3 EGP
+            رخام جلالة م٢ ۸۰۰ جنيه
+        """.trimIndent()), 1234L)
+        assertEquals(2, rows.size)
+        assertEquals(3.0, rows[0].rate, 0.0)
+        assertEquals(800.0, rows[1].rate, 0.0)
+    }
+
     private fun source(text: String) = RateCorpusDocument(
         id = 7L,
         displayName = "source.xlsx",

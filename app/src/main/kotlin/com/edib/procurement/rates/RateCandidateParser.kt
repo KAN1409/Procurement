@@ -8,7 +8,7 @@ import java.security.MessageDigest
 import java.util.Locale
 
 object RateCandidateParser {
-    const val PARSER_VERSION = "rate-candidate-1.0"
+    const val PARSER_VERSION = "rate-candidate-1.1"
     private const val MAX_CANDIDATES_PER_DOCUMENT = 500
 
     data class HeaderMap(
@@ -118,7 +118,7 @@ object RateCandidateParser {
             .toList()
         if (numbers.isEmpty()) return null
 
-        val rate = chooseHeuristicRate(evidence, unit, numbers) ?: return null
+        val rate = chooseHeuristicRate(evidence, cells, unit, currency, numbers) ?: return null
         val excluded = cells.indices.filterTo(mutableSetOf()) { idx ->
             val c = cells[idx]
             detectUnit(c) != null || detectCurrency(c) != null || extractOnlyNumber(c) != null
@@ -274,19 +274,51 @@ object RateCandidateParser {
 
     private fun chooseHeuristicRate(
         line: String,
+        cells: List<String>,
         unit: String?,
+        currency: String?,
         numbers: List<Double>
     ): Double? {
-        if (numbers.size == 1) return numbers.first()
-        if (unit != null) {
-            val unitMatch = UNIT_REGEX.find(line)
-            if (unitMatch != null) {
-                val after = line.substring(unitMatch.range.last + 1)
-                val next = NUMBER_REGEX.find(after)?.value?.let(::parseCommercialNumber)
-                if (next != null && plausibleRate(next)) return next
+        val explicitPrice = Regex(
+            """(?i)(?:سعر\\s*(?:الوحدة|الوحده)?|الفئة|فئة|unit\\s*(?:rate|price)|rate|price)\\s*[:=\\-]?\\s*"""
+        )
+        val label = explicitPrice.find(line)
+        if (label != null) {
+            val after = line.substring(label.range.last + 1).trimStart()
+            val value = NUMBER_REGEX.find(after)?.takeIf { it.range.first == 0 }
+                ?.value?.let(::parseCommercialNumber)
+            if (value != null && plausibleRate(value)) return value
+        }
+
+        // A structured row must place a description before a separate unit and price.
+        // Numeric reference identifiers and unrelated currency mentions are not rates.
+        if (cells.size >= 3) {
+            val unitIndex = cells.indexOfFirst { detectUnit(it) != null && extractOnlyNumber(it) == null }
+            if (unitIndex > 0 && cells.take(unitIndex).any(::looksLikeDescription)) {
+                val priceCell = cells.drop(unitIndex + 1).firstOrNull {
+                    extractOnlyNumber(it)?.let(::plausibleRate) == true
+                }
+                if (priceCell != null) return extractOnlyNumber(priceCell)
             }
         }
-        return numbers.lastOrNull()
+
+        // Free-text price must be adjacent to the unit and/or currency, with a
+        // description preceding the commercial suffix. Never choose last number.
+        if (unit == null) return null
+        val unitMatch = UNIT_REGEX.find(line) ?: return null
+        val prefix = line.substring(0, unitMatch.range.first)
+        if (!looksLikeDescription(prefix) || prefix.trim().matches(Regex("""(?i)(?:project|building|reference|ref|مشروع|مبنى|مبني|كود)\\s*[-#:]?\\s*[\\d٠-٩۰-۹]+"""))) return null
+        val suffix = line.substring(unitMatch.range.last + 1).trim()
+        val priceMatch = NUMBER_REGEX.find(suffix) ?: return null
+        val beforePrice = suffix.substring(0, priceMatch.range.first).trim()
+        val allowedBridge = beforePrice.isEmpty() ||
+            beforePrice.matches(Regex("""(?i)(?:egp|usd|eur|جنيه|ج\\.?\\s*م|[:=\\-])\\s*"""))
+        if (!allowedBridge) return null
+        val afterPrice = suffix.substring(priceMatch.range.last + 1).trim()
+        if (afterPrice.isNotEmpty() &&
+            !afterPrice.matches(Regex("""(?i)(?:egp|usd|eur|جنيه|ج\\.?\\s*م|\\$|€)"""))) return null
+        val rate = parseCommercialNumber(priceMatch.value) ?: return null
+        return rate.takeIf(::plausibleRate)
     }
 
     private fun plausibleRate(value: Double): Boolean =
