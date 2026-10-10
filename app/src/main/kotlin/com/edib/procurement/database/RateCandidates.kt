@@ -57,7 +57,7 @@ data class RateCandidateEntity(
     val unitRaw: String? = null,
     val quantity: Double? = null,
     val rate: Double,
-    val currency: String = "EGP",
+    val currency: String? = null,
     /** Nullable because extraction must not invent supply/install scope. */
     val inferredScope: String? = null,
     val evidenceLocator: String,
@@ -86,7 +86,7 @@ data class RateCandidateRow(
     val unitRaw: String?,
     val quantity: Double?,
     val rate: Double,
-    val currency: String,
+    val currency: String?,
     val inferredScope: String?,
     val evidenceLocator: String,
     val evidenceText: String,
@@ -165,9 +165,10 @@ interface RateCandidateDao {
           AND contentState = 'INDEXED'
           AND TRIM(extractedText) <> ''
         ORDER BY id ASC
+        LIMIT :limit OFFSET :offset
         """
     )
-    suspend fun indexedCorpusDocuments(): List<RateCorpusDocument>
+    suspend fun indexedCorpusDocuments(limit: Int, offset: Int): List<RateCorpusDocument>
 
     @Query(
         """
