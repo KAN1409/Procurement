@@ -1257,8 +1257,21 @@ fun AddRateScreen(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
-                    TextButton(onClick = { selectedSource = null }) {
-                        Text("CHANGE SOURCE", color = ProcurementColors.AccentRedBright)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        TextButton(
+                            onClick = {
+                                vm.openDocument(
+                                    selectedSource!!.documentUri,
+                                    selectedSource!!.extension,
+                                    selectedSource!!.mimeType
+                                )
+                            }
+                        ) {
+                            Text("OPEN SOURCE", color = ProcurementColors.TextSecondary)
+                        }
+                        TextButton(onClick = { selectedSource = null }) {
+                            Text("CHANGE SOURCE", color = ProcurementColors.AccentRedBright)
+                        }
                     }
                 }
             }
