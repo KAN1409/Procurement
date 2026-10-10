@@ -17,9 +17,11 @@ import com.edib.procurement.database.LinkedDocumentRow
 import com.edib.procurement.database.ProjectWithCount
 import com.edib.procurement.database.ProjectDetail
 import com.edib.procurement.database.ContractorDetail
+import com.edib.procurement.database.RateCandidateRow
 import com.edib.procurement.database.RateDraft
 import com.edib.procurement.database.RateListRow
 import com.edib.procurement.database.RateSourceChoice
+import com.edib.procurement.rates.RateCandidateScanProgress
 import com.edib.procurement.rates.RateCheckRequest
 import com.edib.procurement.rates.RateCheckResult
 import com.edib.procurement.database.UnlinkedDocumentRow
@@ -103,6 +105,15 @@ class ProcurementViewModel(app: Application) : AndroidViewModel(app) {
     private val _rateFindQuery = MutableStateFlow("")
     val rateFindQuery: StateFlow<String> = _rateFindQuery.asStateFlow()
 
+    private val _rateCandidateQuery = MutableStateFlow("")
+    val rateCandidateQuery: StateFlow<String> = _rateCandidateQuery.asStateFlow()
+
+    private val _rateCandidateScan = MutableStateFlow(RateCandidateScanProgress())
+    val rateCandidateScan: StateFlow<RateCandidateScanProgress> = _rateCandidateScan.asStateFlow()
+
+    private val _selectedRateCandidate = MutableStateFlow<RateCandidateRow?>(null)
+    val selectedRateCandidate: StateFlow<RateCandidateRow?> = _selectedRateCandidate.asStateFlow()
+
     private var scanJob: Job? = null
 
     val counts: StateFlow<HomeCounts?> = repo.homeCounts()
@@ -157,6 +168,13 @@ class ProcurementViewModel(app: Application) : AndroidViewModel(app) {
     val rateFindResults: StateFlow<List<RateListRow>> =
         _rateFindQuery.flatMapLatest { q -> repo.rates(q) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val rateCandidates: StateFlow<List<RateCandidateRow>> =
+        _rateCandidateQuery.flatMapLatest { q -> repo.rateCandidates(q) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val rateCandidateCount: StateFlow<Int> = repo.rateCandidateCount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     private val _rateCheckResult = MutableStateFlow<RateCheckResult?>(null)
     val rateCheckResult: StateFlow<RateCheckResult?> = _rateCheckResult.asStateFlow()
@@ -213,6 +231,8 @@ fun setRateSourceQuery(q: String) { _rateSourceQuery.value = q }
 fun setRateCheckChoiceQuery(q: String) { _rateCheckChoiceQuery.value = q }
 
 fun setRateFindQuery(q: String) { _rateFindQuery.value = q }
+
+fun setRateCandidateQuery(q: String) { _rateCandidateQuery.value = q }
 
     fun clearMessage() { _message.value = null }
 
@@ -411,11 +431,53 @@ fun rescanDocumentTree() {
             try {
                 repo.addRate(draft)
                 _rateSourceQuery.value = ""
+                _selectedRateCandidate.value = null
                 say("Rate observation saved")
                 onSaved()
             } catch (e: Throwable) {
                 say(e.message ?: "Could not save rate", isError = true)
             }
+        }
+    }
+
+    fun scanRateCandidates() {
+        if (_rateCandidateScan.value.running) return
+        viewModelScope.launch {
+            _rateCandidateScan.value = RateCandidateScanProgress(running = true)
+            try {
+                val result = repo.scanRateCandidates { progress ->
+                    _rateCandidateScan.value = progress
+                }
+                _rateCandidateScan.value = RateCandidateScanProgress(
+                    running = false,
+                    documentsScanned = result.documentsScanned,
+                    candidatesDetected = result.candidatesDetected,
+                    candidatesInserted = result.candidatesInserted
+                )
+                say("Candidate scan: ${result.candidatesInserted} new from ${result.documentsScanned} indexed files")
+            } catch (e: Throwable) {
+                _rateCandidateScan.value = RateCandidateScanProgress(
+                    running = false,
+                    error = e.message ?: "Candidate scan failed"
+                )
+                say(e.message ?: "Candidate scan failed", isError = true)
+            }
+        }
+    }
+
+    fun selectRateCandidate(candidate: RateCandidateRow) {
+        _selectedRateCandidate.value = candidate
+    }
+
+    fun clearSelectedRateCandidate() {
+        _selectedRateCandidate.value = null
+    }
+
+    fun dismissRateCandidate(id: Long) {
+        viewModelScope.launch {
+            runCatching { repo.dismissRateCandidate(id) }
+                .onSuccess { say("Candidate dismissed") }
+                .onFailure { say(it.message ?: "Could not dismiss candidate", isError = true) }
         }
     }
 
