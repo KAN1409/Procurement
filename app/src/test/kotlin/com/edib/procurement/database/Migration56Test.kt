@@ -25,7 +25,8 @@ class Migration56Test {
                 Migrations.MIGRATION_2_3,
                 Migrations.MIGRATION_3_4,
                 Migrations.MIGRATION_4_5,
-                Migrations.MIGRATION_5_6
+                Migrations.MIGRATION_5_6,
+                Migrations.MIGRATION_6_7
             )
             .allowMainThreadQueries()
             .build()
@@ -63,6 +64,23 @@ class Migration56Test {
                 indexes.contains("index_rate_observation_itemNormalized_unit_scope_status")
             )
         }
+    }
+
+    @Test
+    fun rateCandidateTableExistsAndStaysSeparateFromTrustedRates() = runBlocking(Dispatchers.IO) {
+        val sql = db.openHelper.writableDatabase
+        sql.query("PRAGMA table_info(rate_candidate)").use { cursor ->
+            val columns = mutableSetOf<String>()
+            while (cursor.moveToNext()) {
+                columns += cursor.getString(cursor.getColumnIndexOrThrow("name"))
+            }
+            assertTrue(columns.contains("sourceKey"))
+            assertTrue(columns.contains("evidenceText"))
+            assertTrue(columns.contains("status"))
+            assertTrue(columns.contains("confirmedRateId"))
+        }
+        assertEquals(0, db.rateDao().ratesFlow("").first().size)
+        assertEquals(0, db.rateCandidateDao().pendingCountFlow().first())
     }
 
     @Test
