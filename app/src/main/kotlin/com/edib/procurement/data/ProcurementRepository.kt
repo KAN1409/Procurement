@@ -34,6 +34,7 @@ import com.edib.procurement.database.Migrations
 import com.edib.procurement.database.ProcurementDatabase
 import com.edib.procurement.database.PackDao
 import com.edib.procurement.database.ProjectEntity
+import com.edib.procurement.database.RateCandidateRow
 import com.edib.procurement.database.RateDraft
 import com.edib.procurement.database.RateListRow
 import com.edib.procurement.database.RateObservationEntity
@@ -42,6 +43,9 @@ import com.edib.procurement.database.RateSourceChoice
 import com.edib.procurement.database.RateStatus
 import com.edib.procurement.database.normalizeRateItem
 import com.edib.procurement.database.normalizeRateUnit
+import com.edib.procurement.rates.RateCandidateScanProgress
+import com.edib.procurement.rates.RateCandidateScanResult
+import com.edib.procurement.rates.RateCandidateScanner
 import com.edib.procurement.rates.RateCheckRequest
 import com.edib.procurement.rates.RateCheckResult
 import com.edib.procurement.rates.RateComparator
@@ -125,6 +129,8 @@ class ProcurementRepository(context: Context) {
     private val contractorDao = db.contractorDao()
     private val documentDao = db.documentDao()
     private val rateDao = db.rateDao()
+    private val rateCandidateDao = db.rateCandidateDao()
+    private val rateCandidateScanner = RateCandidateScanner(rateCandidateDao)
 
     private val importer = FollowUpWorkbookImporter(appContext, followUpDao, contractorDao)
     private val scanner = DocumentTreeScanner(appContext, documentDao)
@@ -432,6 +438,21 @@ fun homeCounts(): Flow<HomeCounts> {
     fun rateCheckChoices(query: String): Flow<List<RateListRow>> =
         rateDao.awardedChoices(query.trim())
 
+    fun rateCandidates(query: String): Flow<List<RateCandidateRow>> =
+        rateCandidateDao.pendingFlow(query.trim())
+
+    fun rateCandidateCount(): Flow<Int> = rateCandidateDao.pendingCountFlow()
+
+    suspend fun scanRateCandidates(
+        onProgress: (RateCandidateScanProgress) -> Unit = {}
+    ): RateCandidateScanResult = withContext(Dispatchers.IO) {
+        rateCandidateScanner.scan(onProgress)
+    }
+
+    suspend fun dismissRateCandidate(id: Long) = withContext(Dispatchers.IO) {
+        rateCandidateDao.dismiss(id, System.currentTimeMillis())
+    }
+
     /**
      * Persists one commercial observation without inventing any context.
      *
@@ -464,7 +485,7 @@ fun homeCounts(): Flow<HomeCounts> {
         }
 
         val now = System.currentTimeMillis()
-        rateDao.insert(
+        val savedRateId = rateDao.insert(
             RateObservationEntity(
                 itemRaw = item,
                 itemNormalized = normalizeRateItem(item),
@@ -495,6 +516,10 @@ fun homeCounts(): Flow<HomeCounts> {
                 updatedAt = now
             )
         )
+        draft.candidateId?.let { candidateId ->
+            rateCandidateDao.confirm(candidateId, savedRateId, now)
+        }
+        savedRateId
     }
 
     suspend fun latestComparableAwarded(
