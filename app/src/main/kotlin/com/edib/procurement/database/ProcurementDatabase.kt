@@ -27,9 +27,10 @@ import androidx.room.RoomDatabase
         AppSettingEntity::class,
         AiPackEntity::class,
         AiPackSourceEntity::class,
-        RateObservationEntity::class
+        RateObservationEntity::class,
+        RateCandidateEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class ProcurementDatabase : RoomDatabase() {
@@ -39,6 +40,7 @@ abstract class ProcurementDatabase : RoomDatabase() {
     abstract fun packDao(): PackDao
     abstract fun aiPackDao(): AiPackDao
     abstract fun rateDao(): RateDao
+    abstract fun rateCandidateDao(): RateCandidateDao
 
     companion object {
         @Volatile
@@ -56,7 +58,8 @@ abstract class ProcurementDatabase : RoomDatabase() {
                         Migrations.MIGRATION_2_3,
                         Migrations.MIGRATION_3_4,
                         Migrations.MIGRATION_4_5,
-                        Migrations.MIGRATION_5_6
+                        Migrations.MIGRATION_5_6,
+                        Migrations.MIGRATION_6_7
                     )
                     .build()
                     .also { instance = it }
