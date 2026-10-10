@@ -3,7 +3,7 @@ name: Build Update 1 APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, update2-trusted-rates]
     paths:
       - "app/**"
       - "gradle/**"
