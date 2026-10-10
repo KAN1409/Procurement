@@ -14,3 +14,8 @@ against testable seams:
 They are preserved here as behavioral notes, not counted as passing coverage.
 When either subsystem is changed, rewrite the relevant test around a deterministic
 adapter/fake rather than simply moving the stale test back.
+
+- `SearchConsistencyTest.kt`: asserted a removed `allDocumentIds(query)`
+  API from the pre-paging implementation. Current document search is database-paged
+  through `documentsFlow(query, limit, offset)`; the stale reflection check cannot
+  validate that architecture and is preserved only as historical intent.

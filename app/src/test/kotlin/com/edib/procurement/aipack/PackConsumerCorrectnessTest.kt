@@ -317,11 +317,11 @@ class PackConsumerCorrectnessTest {
     @Test
     fun `the 1900 date system leap day quirk is handled`() {
         // Excel reserves serial 60 for a phantom 29 February 1900, so serial
-        // 61 is 1900-03-01 and every modern date reads against 1899-12-30.
+        // 61 is 1900-03-01. Serial 1 remains Excel's displayed 1900-01-01.
         assertEquals("1900-03-01", ExcelDateFormat.serialToIso(61, false))
         assertEquals("1900-02-28", ExcelDateFormat.serialToIso(59, false))
         assertEquals("1900-02-28", ExcelDateFormat.serialToIso(60, false))
-        assertEquals("1899-12-31", ExcelDateFormat.serialToIso(1, false))
+        assertEquals("1900-01-01", ExcelDateFormat.serialToIso(1, false))
         assertEquals("2019-10-03", ExcelDateFormat.serialToIso(43741, false))
         assertEquals("2019-10-10", ExcelDateFormat.serialToIso(43748, false))
     }
