@@ -197,6 +197,21 @@ interface RateCandidateDao {
     )
     suspend fun markChangedOrMissingPendingStale()
 
+    /**
+     * Parser rules are versioned. When precision rules change, old pending
+     * candidates must leave the review queue instead of surviving forever.
+     * Reviewed rows are historical evidence and are never rewritten here.
+     */
+    @Query(
+        """
+        UPDATE rate_candidate
+        SET status = 'STALE'
+        WHERE status = 'PENDING'
+          AND parserVersion <> :parserVersion
+        """
+    )
+    suspend fun markPendingFromOtherParserStale(parserVersion: String)
+
     @Query(
         """
         UPDATE rate_candidate

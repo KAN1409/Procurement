@@ -9,15 +9,16 @@ class RateCandidateParserTest {
 
     @Test
     fun headerMappedTableExtractsDescriptionUnitRateAndQuantity() {
-        val doc = source(
-            """
-            --- Sheet: BOQ ---
-            البند	الكمية	الوحدة	سعر الوحدة	الإجمالي
-            توريد وتركيب رخام جلالة للأرضيات	20	م٢	٨٠٠	١٦٠٠٠
-            """.trimIndent()
+        val rows = RateCandidateParser.parse(
+            source(
+                """
+                --- Sheet: BOQ ---
+                البند	الكمية	الوحدة	سعر الوحدة	الإجمالي
+                توريد وتركيب رخام جلالة للأرضيات	20	م٢	٨٠٠	١٦٠٠٠
+                """.trimIndent()
+            ),
+            now = 1234L
         )
-
-        val rows = RateCandidateParser.parse(doc, now = 1234L)
 
         assertEquals(1, rows.size)
         val row = rows.single()
@@ -27,25 +28,97 @@ class RateCandidateParserTest {
         assertEquals(800.0, row.rate, 0.0)
         assertEquals("SUPPLY_INSTALL", row.inferredScope)
         assertTrue(row.confidence >= 90)
-        assertTrue(row.evidenceLocator.contains("BOQ"))
+        assertEquals("TABLE_HEADER", row.detectionMethod)
     }
 
     @Test
-    fun heuristicRequiresUnitOrCurrencySoRandomNumbersDoNotFloodQueue() {
-        val doc = source(
-            """
-            Project 2026
-            Revision 14
-            Marble skirting lm 775 EGP
-            """.trimIndent()
+    fun simpleUnitCurrencyLineStillProducesCandidate() {
+        val rows = RateCandidateParser.parse(
+            source("Marble skirting lm 775 EGP"),
+            now = 1234L
         )
-
-        val rows = RateCandidateParser.parse(doc, now = 1234L)
 
         assertEquals(1, rows.size)
         assertEquals(775.0, rows.single().rate, 0.0)
         assertEquals("lm", rows.single().unitRaw)
         assertEquals("EGP", rows.single().currency)
+        assertTrue(rows.single().confidence >= 80)
+    }
+
+    @Test
+    fun explicitRateLabelWinsEvenWhenProjectNumberExists() {
+        val rows = RateCandidateParser.parse(
+            source("Project 8 - Marble skirting lm - Unit Rate: 775 EGP"),
+            now = 1234L
+        )
+
+        assertEquals(1, rows.size)
+        assertEquals(775.0, rows.single().rate, 0.0)
+        assertEquals("EXPLICIT_RATE_LABEL", rows.single().detectionMethod)
+        assertTrue(rows.single().confidence >= 90)
+    }
+
+    @Test
+    fun headerlessCommercialRowWithOneNumericCellIsAccepted() {
+        val rows = RateCandidateParser.parse(
+            source("Marble skirting	lm	775	EGP"),
+            now = 1234L
+        )
+
+        assertEquals(1, rows.size)
+        assertEquals(775.0, rows.single().rate, 0.0)
+        assertEquals("UNIT_RATE_CURRENCY_ROW", rows.single().detectionMethod)
+    }
+
+    @Test
+    fun headerlessRowWithMultipleNumericCellsIsRejectedAsAmbiguous() {
+        val rows = RateCandidateParser.parse(
+            source("Marble skirting	lm	20	775	EGP"),
+            now = 1234L
+        )
+
+        assertTrue(rows.isEmpty())
+    }
+
+    @Test
+    fun projectAndBuildingNumbersAreNotRatesJustBecauseCurrencyAndUnitExist() {
+        val rows = RateCandidateParser.parse(
+            source("Project 8	Building 3	Marble package	m2	EGP"),
+            now = 1234L
+        )
+
+        assertTrue(rows.isEmpty())
+    }
+
+    @Test
+    fun revisionNumberIsNotPromotedToRate() {
+        val rows = RateCandidateParser.parse(
+            source("Revision 14 marble skirting lm EGP"),
+            now = 1234L
+        )
+
+        assertTrue(rows.isEmpty())
+    }
+
+    @Test
+    fun procurementCodeFragmentsAreNotCommercialNumbers() {
+        val rows = RateCandidateParser.parse(
+            source("MMH2-GR-AR-14-25A	Marble skirting	lm	EGP"),
+            now = 1234L
+        )
+
+        assertTrue(rows.isEmpty())
+    }
+
+    @Test
+    fun quantityAndDimensionNumbersDoNotCompeteWithRealRate() {
+        val rows = RateCandidateParser.parse(
+            source("Quantity: 20 Marble skirting 15 cm lm 775 EGP"),
+            now = 1234L
+        )
+
+        assertEquals(1, rows.size)
+        assertEquals(775.0, rows.single().rate, 0.0)
     }
 
     private fun source(text: String) = RateCorpusDocument(

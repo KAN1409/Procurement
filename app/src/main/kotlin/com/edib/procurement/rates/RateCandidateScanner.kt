@@ -31,6 +31,10 @@ class RateCandidateScanner(
         var inserted = 0
         val batchSize = 25
 
+        // Precision rules are versioned. Retire old unreviewed candidates first;
+        // PARSER_VERSION is also part of the source key so valid rows can be
+        // re-created by the new parser without colliding with stale rows.
+        dao.markPendingFromOtherParserStale(RateCandidateParser.PARSER_VERSION)
         dao.markChangedOrMissingPendingStale()
 
         while (currentCoroutineContext().isActive) {
