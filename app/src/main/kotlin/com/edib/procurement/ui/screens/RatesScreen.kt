@@ -45,6 +45,7 @@ import com.edib.procurement.database.RateStatus
 import com.edib.procurement.rates.RateCheckRequest
 import com.edib.procurement.rates.RateCheckResult
 import com.edib.procurement.rates.RateCheckVerdict
+import com.edib.procurement.rates.rankRelatedRates
 import com.edib.procurement.ui.ProcurementViewModel
 import com.edib.procurement.ui.components.Chip
 import com.edib.procurement.ui.components.EmptyState
@@ -314,28 +315,13 @@ fun FindRatesScreen(
         selectedStatus,
         selectedScope
     ) {
-        val filtered = allRows.asSequence()
-            .filter { selectedStatus == "ALL" || it.status == selectedStatus }
-            .filter { selectedScope == "ANY" || it.scope == selectedScope }
-            .filter {
-                target == null || targetInvalid ||
-                    currencyNormalized.isBlank() ||
-                    it.currency.trim().uppercase() == currencyNormalized
-            }
-            .toList()
-
-        if (target != null && !targetInvalid) {
-            filtered.sortedWith(
-                compareBy<RateListRow> { abs(it.rate - target) }
-                    .thenByDescending { it.observedDate }
-                    .thenByDescending { it.id }
-            )
-        } else {
-            filtered.sortedWith(
-                compareByDescending<RateListRow> { it.observedDate }
-                    .thenByDescending { it.id }
-            )
-        }
+        rankRelatedRates(
+            rows = allRows,
+            targetRate = target?.takeIf { !targetInvalid },
+            targetCurrency = currencyNormalized,
+            status = selectedStatus.takeUnless { it == "ALL" },
+            scope = selectedScope.takeUnless { it == "ANY" }
+        )
     }
 
     Column(
