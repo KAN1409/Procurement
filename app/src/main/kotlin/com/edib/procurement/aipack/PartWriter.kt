@@ -51,7 +51,7 @@ class PartWriter(
      * [body] writes only the middle of the pack (group/entry/source content) so
      * this function owns the framing and cannot be skipped.
      */
-    fun write(
+    suspend fun write(
         outFile: File,
         tempFile: File,
         scope: PackScope,
@@ -65,7 +65,7 @@ class PartWriter(
         entryCount: Int,
         oversizedReason: String?,
         sources: List<PackSource>,
-        body: (PackTextWriter) -> Unit
+        body: suspend (PackTextWriter) -> Unit
     ): PartFile {
         tempFile.outputStream().buffered(64 * 1024).use { raw ->
             ZipOutputStream(raw).use { zip ->
