@@ -152,6 +152,7 @@ interface RateCandidateDao {
               OR c.unitRaw LIKE '%' || :query || '%'
           )
         ORDER BY c.confidence DESC, c.id DESC
+        LIMIT 500
         """
     )
     fun pendingFlow(query: String): Flow<List<RateCandidateRow>>
