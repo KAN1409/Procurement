@@ -95,6 +95,10 @@ class ProcurementViewModel(app: Application) : AndroidViewModel(app) {
     private val _rateSourceQuery = MutableStateFlow("")
     val rateSourceQuery: StateFlow<String> = _rateSourceQuery.asStateFlow()
 
+    /** Existing awarded items offered as exact commercial templates in Rate Check. */
+    private val _rateCheckChoiceQuery = MutableStateFlow("")
+    val rateCheckChoiceQuery: StateFlow<String> = _rateCheckChoiceQuery.asStateFlow()
+
     private var scanJob: Job? = null
 
     val counts: StateFlow<HomeCounts?> = repo.homeCounts()
@@ -140,6 +144,10 @@ class ProcurementViewModel(app: Application) : AndroidViewModel(app) {
 
     val rateSourceChoices: StateFlow<List<RateSourceChoice>> =
         _rateSourceQuery.flatMapLatest { q -> repo.rateSourceDocuments(q) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val rateCheckChoices: StateFlow<List<RateListRow>> =
+        _rateCheckChoiceQuery.flatMapLatest { q -> repo.rateCheckChoices(q) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _rateCheckResult = MutableStateFlow<RateCheckResult?>(null)
@@ -193,6 +201,8 @@ fun setQuery(q: String) { _query.value = q }
 fun setRateQuery(q: String) { _rateQuery.value = q }
 
 fun setRateSourceQuery(q: String) { _rateSourceQuery.value = q }
+
+fun setRateCheckChoiceQuery(q: String) { _rateCheckChoiceQuery.value = q }
 
     fun clearMessage() { _message.value = null }
 
@@ -415,6 +425,10 @@ fun rescanDocumentTree() {
 
     fun clearRateCheck() {
         _rateCheckResult.value = null
+    }
+
+    fun clearRateCheckChoiceQuery() {
+        _rateCheckChoiceQuery.value = ""
     }
 
     fun deleteRate(id: Long) {
