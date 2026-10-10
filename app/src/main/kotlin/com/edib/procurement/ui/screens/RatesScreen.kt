@@ -42,6 +42,9 @@ import com.edib.procurement.database.RateListRow
 import com.edib.procurement.database.RateScope
 import com.edib.procurement.database.RateSourceChoice
 import com.edib.procurement.database.RateStatus
+import com.edib.procurement.rates.RateCheckRequest
+import com.edib.procurement.rates.RateCheckResult
+import com.edib.procurement.rates.RateCheckVerdict
 import com.edib.procurement.ui.ProcurementViewModel
 import com.edib.procurement.ui.components.Chip
 import com.edib.procurement.ui.components.EmptyState
@@ -56,7 +59,8 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun RatesScreen(
     vm: ProcurementViewModel,
-    onAddRate: () -> Unit
+    onAddRate: () -> Unit,
+    onCheckRate: () -> Unit
 ) {
     val query by vm.rateQuery.collectAsStateWithLifecycle()
     val rates by vm.rates.collectAsStateWithLifecycle()
@@ -79,6 +83,10 @@ fun RatesScreen(
                 modifier = Modifier.weight(1f)
             )
             Spacer(Modifier.width(8.dp))
+            OutlinedButton(onClick = onCheckRate) {
+                Text("CHECK")
+            }
+            Spacer(Modifier.width(6.dp))
             Button(
                 onClick = onAddRate,
                 colors = ButtonDefaults.buttonColors(containerColor = ProcurementColors.AccentRed)
@@ -247,6 +255,470 @@ private fun RateRow(vm: ProcurementViewModel, rate: RateListRow) {
                 style = MaterialTheme.typography.labelSmall,
                 color = ProcurementColors.StatusWarn
             )
+        }
+    }
+}
+
+@Composable
+fun RateCheckScreen(
+    vm: ProcurementViewModel,
+    onBack: () -> Unit
+) {
+    val contractors by vm.contractors.collectAsStateWithLifecycle()
+    val projects by vm.projects.collectAsStateWithLifecycle()
+    val result by vm.rateCheckResult.collectAsStateWithLifecycle()
+    val running by vm.rateCheckRunning.collectAsStateWithLifecycle()
+
+    var item by rememberSaveable { mutableStateOf("") }
+    var material by rememberSaveable { mutableStateOf("") }
+    var specification by rememberSaveable { mutableStateOf("") }
+    var dimensions by rememberSaveable { mutableStateOf("") }
+    var unit by rememberSaveable { mutableStateOf("") }
+    var scope by rememberSaveable { mutableStateOf(RateScope.SUPPLY_INSTALL) }
+    var contractorText by rememberSaveable { mutableStateOf("") }
+    var contractorId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var projectText by rememberSaveable { mutableStateOf("") }
+    var projectId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var location by rememberSaveable { mutableStateOf("") }
+    var quantity by rememberSaveable { mutableStateOf("") }
+    var proposedRate by rememberSaveable { mutableStateOf("") }
+    var currency by rememberSaveable { mutableStateOf("EGP") }
+    var localError by rememberSaveable { mutableStateOf<String?>(null) }
+
+    val contractorSuggestions = contractors
+        .filter {
+            contractorText.isNotBlank() &&
+                it.canonicalName.contains(contractorText, ignoreCase = true)
+        }
+        .take(5)
+
+    val projectSuggestions = projects
+        .filter {
+            projectText.isNotBlank() &&
+                it.canonicalName.contains(projectText, ignoreCase = true)
+        }
+        .take(5)
+
+    fun invalidate() {
+        localError = null
+        vm.clearRateCheck()
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(ProcurementColors.Graphite900)
+    ) {
+        ScreenHeader("Rate Check", "proposed rate vs strict awarded history")
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 14.dp, vertical = 4.dp)
+        ) {
+            Panel {
+                Text(
+                    "No averages. No dimensional scaling. No location coefficient.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ProcurementColors.TextSecondary
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    "Only exact item + material + specification + dimensions + unit + scope + currency can become a comparison basis.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ProcurementColors.TextTertiary
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+            SectionLabel("Proposed item")
+            RateField("Item description *", item, onValueChange = {
+                item = it
+                invalidate()
+            })
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                RateField(
+                    label = "Material",
+                    value = material,
+                    onValueChange = {
+                        material = it
+                        invalidate()
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                RateField(
+                    label = "Dimensions",
+                    value = dimensions,
+                    onValueChange = {
+                        dimensions = it
+                        invalidate()
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            RateField("Specification", specification, onValueChange = {
+                specification = it
+                invalidate()
+            })
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                RateField(
+                    label = "Unit *",
+                    value = unit,
+                    onValueChange = {
+                        unit = it
+                        invalidate()
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                RateField(
+                    label = "Proposed rate *",
+                    value = proposedRate,
+                    onValueChange = {
+                        proposedRate = it
+                        invalidate()
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                RateField(
+                    label = "Currency",
+                    value = currency,
+                    onValueChange = {
+                        currency = it
+                        invalidate()
+                    },
+                    modifier = Modifier.weight(0.8f)
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+            SectionLabel("Scope")
+            ChoiceRow(
+                choices = RateScope.all,
+                selected = scope,
+                label = ::scopeLabel,
+                onSelect = {
+                    scope = it
+                    invalidate()
+                }
+            )
+
+            Spacer(Modifier.height(12.dp))
+            SectionLabel("Relevance context")
+            RateField(
+                "Contractor",
+                contractorText,
+                onValueChange = {
+                    contractorText = it
+                    contractorId = null
+                    invalidate()
+                }
+            )
+            if (contractorSuggestions.isNotEmpty() && contractorId == null) {
+                SuggestionPanel {
+                    contractorSuggestions.forEach { c ->
+                        SuggestionLine(c.canonicalName) {
+                            contractorText = c.canonicalName
+                            contractorId = c.id
+                            invalidate()
+                        }
+                    }
+                }
+            }
+
+            RateField(
+                "Project",
+                projectText,
+                onValueChange = {
+                    projectText = it
+                    projectId = null
+                    invalidate()
+                }
+            )
+            if (projectSuggestions.isNotEmpty() && projectId == null) {
+                SuggestionPanel {
+                    projectSuggestions.forEach { p ->
+                        SuggestionLine(p.canonicalName) {
+                            projectText = p.canonicalName
+                            projectId = p.id
+                            invalidate()
+                        }
+                    }
+                }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                RateField(
+                    label = "Location",
+                    value = location,
+                    onValueChange = {
+                        location = it
+                        invalidate()
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                RateField(
+                    label = "Quantity",
+                    value = quantity,
+                    onValueChange = {
+                        quantity = it
+                        invalidate()
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Text(
+                "Project, location and quantity rank relevance only. They never change the historical rate.",
+                style = MaterialTheme.typography.labelSmall,
+                color = ProcurementColors.TextTertiary
+            )
+
+            localError?.let {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ProcurementColors.AccentRedBright
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        vm.clearRateCheck()
+                        onBack()
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("BACK")
+                }
+                Button(
+                    onClick = {
+                        val proposed = proposedRate.replace(",", "").trim().toDoubleOrNull()
+                        val qty = quantity.replace(",", "").trim()
+                            .takeIf { it.isNotEmpty() }
+                            ?.toDoubleOrNull()
+
+                        localError = when {
+                            item.isBlank() -> "Item description is required."
+                            unit.isBlank() -> "Unit is required."
+                            proposed == null || proposed <= 0.0 -> "Enter a valid proposed rate."
+                            quantity.isNotBlank() && qty == null -> "Quantity is not a valid number."
+                            else -> null
+                        }
+
+                        if (localError == null) {
+                            vm.checkRate(
+                                RateCheckRequest(
+                                    itemRaw = item,
+                                    material = material,
+                                    specification = specification,
+                                    dimensions = dimensions,
+                                    unit = unit,
+                                    scope = scope,
+                                    contractorId = contractorId,
+                                    projectId = projectId,
+                                    location = location,
+                                    quantity = qty,
+                                    proposedRate = proposed!!,
+                                    currency = currency
+                                )
+                            )
+                        }
+                    },
+                    enabled = !running,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ProcurementColors.AccentRed
+                    )
+                ) {
+                    Text(if (running) "CHECKING…" else "CHECK RATE")
+                }
+            }
+
+            result?.let {
+                Spacer(Modifier.height(16.dp))
+                RateCheckResultPanel(vm, it)
+            }
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun RateCheckResultPanel(
+    vm: ProcurementViewModel,
+    result: RateCheckResult
+) {
+    val basis = result.comparisonBasis
+    val verdictTint = when (result.verdict) {
+        RateCheckVerdict.NO_COMPARABLE -> ProcurementColors.StatusWarn
+        RateCheckVerdict.SAME -> ProcurementColors.StatusInfo
+        RateCheckVerdict.LOWER -> ProcurementColors.StatusOk
+        RateCheckVerdict.HIGHER -> ProcurementColors.AccentRedBright
+    }
+
+    SectionLabel("Check result")
+    Panel {
+        Text(
+            when (result.verdict) {
+                RateCheckVerdict.NO_COMPARABLE -> "NO STRICT COMPARABLE"
+                RateCheckVerdict.SAME -> "SAME AS BASIS"
+                RateCheckVerdict.LOWER -> "LOWER THAN BASIS"
+                RateCheckVerdict.HIGHER -> "HIGHER THAN BASIS"
+            },
+            style = MaterialTheme.typography.titleMedium,
+            color = verdictTint
+        )
+
+        if (basis != null) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "${MONEY.format(result.request.proposedRate)} ${result.request.currency} proposed",
+                style = MaterialTheme.typography.bodyMedium,
+                color = ProcurementColors.TextPrimary
+            )
+            val delta = result.deltaAmount ?: 0.0
+            val pct = result.deltaPercent
+            Text(
+                buildString {
+                    append(if (delta >= 0) "+" else "")
+                    append(MONEY.format(delta))
+                    append(" ")
+                    append(result.request.currency)
+                    if (pct != null) {
+                        append(" · ")
+                        append(if (pct >= 0) "+" else "")
+                        append(MONEY.format(pct))
+                        append("%")
+                    }
+                },
+                style = MaterialTheme.typography.titleSmall,
+                color = verdictTint,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+        result.explanation.forEach { line ->
+            Text(
+                "• $line",
+                style = MaterialTheme.typography.labelSmall,
+                color = ProcurementColors.TextTertiary,
+                modifier = Modifier.padding(bottom = 3.dp)
+            )
+        }
+    }
+
+    result.latestAwardedForContractor?.let {
+        Spacer(Modifier.height(12.dp))
+        SectionLabel("Latest awarded · selected contractor")
+        ComparableRateCard(vm, it)
+    }
+
+    result.closestComparable
+        ?.takeIf { it.id != result.latestAwardedForContractor?.id }
+        ?.let {
+            Spacer(Modifier.height(12.dp))
+            SectionLabel("Closest strict comparable")
+            ComparableRateCard(vm, it)
+        }
+}
+
+@Composable
+private fun ComparableRateCard(
+    vm: ProcurementViewModel,
+    rate: RateListRow
+) {
+    Panel {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    rate.itemRaw,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = ProcurementColors.TextPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    buildList {
+                        rate.contractorName?.let(::add)
+                        rate.projectName?.let(::add)
+                        rate.location?.let(::add)
+                    }.joinToString(" · ").ifBlank { "No contractor/project context" },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ProcurementColors.TextSecondary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    "${MONEY.format(rate.rate)} ${rate.currency}",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = ProcurementColors.AccentRedBright,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    "/ ${rate.unit}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ProcurementColors.TextTertiary
+                )
+            }
+        }
+
+        Spacer(Modifier.height(6.dp))
+        Text(
+            buildList {
+                add(formatRateDate(rate.observedDate))
+                rate.quantity?.let { add("Qty ${MONEY.format(it)}") }
+                add(scopeLabel(rate.scope))
+            }.joinToString(" · "),
+            style = MaterialTheme.typography.labelSmall,
+            color = ProcurementColors.TextTertiary
+        )
+
+        if (!rate.sourceFileName.isNullOrBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                rate.sourceFileName,
+                style = MaterialTheme.typography.labelMedium,
+                color = ProcurementColors.TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            rate.evidenceLocator?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ProcurementColors.TextTertiary
+                )
+            }
+            if (!rate.sourceUri.isNullOrBlank()) {
+                TextButton(
+                    onClick = {
+                        vm.openDocument(
+                            rate.sourceUri,
+                            rate.sourceExtension,
+                            rate.sourceMimeType
+                        )
+                    }
+                ) {
+                    Text(
+                        "OPEN SOURCE",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ProcurementColors.AccentRedBright
+                    )
+                }
+            }
         }
     }
 }
