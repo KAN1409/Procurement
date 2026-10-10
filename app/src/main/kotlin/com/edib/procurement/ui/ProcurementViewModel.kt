@@ -99,6 +99,10 @@ class ProcurementViewModel(app: Application) : AndroidViewModel(app) {
     private val _rateCheckChoiceQuery = MutableStateFlow("")
     val rateCheckChoiceQuery: StateFlow<String> = _rateCheckChoiceQuery.asStateFlow()
 
+    /** Broad commercial-memory search. Unit is deliberately not a filter here. */
+    private val _rateFindQuery = MutableStateFlow("")
+    val rateFindQuery: StateFlow<String> = _rateFindQuery.asStateFlow()
+
     private var scanJob: Job? = null
 
     val counts: StateFlow<HomeCounts?> = repo.homeCounts()
@@ -148,6 +152,10 @@ class ProcurementViewModel(app: Application) : AndroidViewModel(app) {
 
     val rateCheckChoices: StateFlow<List<RateListRow>> =
         _rateCheckChoiceQuery.flatMapLatest { q -> repo.rateCheckChoices(q) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val rateFindResults: StateFlow<List<RateListRow>> =
+        _rateFindQuery.flatMapLatest { q -> repo.rates(q) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _rateCheckResult = MutableStateFlow<RateCheckResult?>(null)
@@ -203,6 +211,8 @@ fun setRateQuery(q: String) { _rateQuery.value = q }
 fun setRateSourceQuery(q: String) { _rateSourceQuery.value = q }
 
 fun setRateCheckChoiceQuery(q: String) { _rateCheckChoiceQuery.value = q }
+
+fun setRateFindQuery(q: String) { _rateFindQuery.value = q }
 
     fun clearMessage() { _message.value = null }
 
