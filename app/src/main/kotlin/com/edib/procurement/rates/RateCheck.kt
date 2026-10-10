@@ -123,7 +123,7 @@ object RateComparator {
         }
 
         val explanation = buildList {
-            add("Exact item, material, specification, dimensions, unit, scope and currency only.")
+            add("Direct comparison requires exact item, material, specification, dimensions, controlled unit equivalence, scope and currency.")
             if (latestForContractor != null) {
                 add("Delta uses the latest awarded rate for the selected contractor.")
             } else if (request.contractorId != null && closest != null) {
@@ -131,7 +131,7 @@ object RateComparator {
             } else if (closest != null) {
                 add("Delta uses the closest strict awarded comparable.")
             } else {
-                add("No strict awarded comparable exists. No rate was inferred.")
+                add("No directly comparable awarded rate exists. No rate was inferred.")
             }
             if (closest != null) {
                 add("Project, location and quantity rank relevance only; no location factor, quantity factor or price adjustment is applied.")
