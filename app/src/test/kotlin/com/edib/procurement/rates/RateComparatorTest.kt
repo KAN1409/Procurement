@@ -112,6 +112,31 @@ class RateComparatorTest {
     }
 
     @Test
+    fun controlledUnitAliasesCompareWithoutChangingOtherCommercialFields() {
+        val request = RateCheckRequest(
+            itemRaw = "رخام",
+            material = null,
+            specification = null,
+            dimensions = null,
+            unit = "m2",
+            scope = RateScope.SUPPLY_INSTALL,
+            proposedRate = 880.0,
+            currency = "EGP"
+        )
+        val historical = row(id = 20, rate = 800.0).copy(
+            itemRaw = "رخام",
+            itemNormalized = normalizeRateItem("رخام"),
+            unit = "m²"
+        )
+
+        val result = RateComparator.compare(request, listOf(historical))
+
+        assertEquals(20L, result.comparisonBasis?.id)
+        assertEquals(80.0, result.deltaAmount ?: Double.NaN, 0.0)
+        assertEquals(10.0, result.deltaPercent ?: Double.NaN, 0.0001)
+    }
+
+    @Test
     fun quotedObservationIsNeverComparisonBasis() {
         val request = request()
         val quoted = row(id = 1).copy(status = RateStatus.QUOTED)
