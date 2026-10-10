@@ -133,9 +133,13 @@ class AiPackBuilder(
                         status = when (ext) {
                             "pdf" -> emitPdf(text, input, extractedTextBuilder)
                             "xlsx", "xls" -> {
-                                emitWorkbook(text, input, detail, doc.displayName) { d, s ->
-                                    onExtractProgress("Extracting ${doc.displayName}", s, 100)
-                                }
+                                emitWorkbook(
+                                    text, input, detail, doc.displayName,
+                                    onSheetProgress = { _, rows ->
+                                        onExtractProgress("Extracting ${doc.displayName}", rows, 100)
+                                    },
+                                    textBuilder = extractedTextBuilder
+                                )
                                 ExtractionStatus.SUCCESS
                             }
                             "docx" -> emitDocx(text, input, doc.documentUri, extractedTextBuilder)
@@ -158,7 +162,7 @@ class AiPackBuilder(
         val finalExtractedText = extractedTextBuilder.toString().takeIf { it.isNotBlank() }
         val extractedAt = System.currentTimeMillis()
         val sourceSize = doc.size
-        val sourceModified = doc.lastModified // this would need to be passed or retrieved
+        val sourceModified: Long? = null
 
         if (finalExtractedText != null) {
             documentDao.updateExtractedText(doc.id, finalExtractedText)
@@ -456,8 +460,8 @@ class AiPackBuilder(
                                                     text.line("--- PAGE ${i + 1} ---")
                                                     text.line(pageText)
                                                     text.line()
+                                                    extractedTextBuilder.append(pageText).append("\n\n")
                                                 }
-                                                extractedTextBuilder.append(pageText).append("\n\n")
                                                 ExtractionStatus.SUCCESS
                                             }
                                             is PdfTextExtractor.Result.NeedsOcr -> {
@@ -501,9 +505,13 @@ class AiPackBuilder(
                                         }
                                     }
                                     "xlsx", "xls" -> {
-                                        emitWorkbook(text, input, detail, doc.displayName) { d, s ->
-                                            progress.publish("Extracting ${doc.displayName}", s, 100)
-                                        }
+                                        emitWorkbook(
+                                            text, input, detail, doc.displayName,
+                                            onSheetProgress = { _, rows ->
+                                                progress.publish("Extracting ${doc.displayName}", rows, 100)
+                                            },
+                                            textBuilder = extractedTextBuilder
+                                        )
                                         ExtractionStatus.SUCCESS
                                     }
                                     "csv", "txt" -> {
@@ -534,7 +542,7 @@ class AiPackBuilder(
                 val finalExtractedText = extractedTextBuilder.toString().takeIf { it.isNotBlank() }
                 val extractedAt = System.currentTimeMillis()
                 val sourceSize = doc.size
-                val sourceModified = doc.lastModified
+                val sourceModified: Long? = null
 
                 if (finalExtractedText != null) {
                     documentDao.updateExtractedText(doc.id, finalExtractedText)
@@ -875,7 +883,7 @@ class AiPackBuilder(
                     text.line("--- PAGE ${i + 1} ---")
                     text.line(pageText)
                     text.line()
-                    textBuilder?.append(pageText).append("\n\n")
+                    textBuilder?.append(pageText)?.append("\n\n")
                 }
                 ExtractionStatus.SUCCESS
             }
@@ -973,14 +981,14 @@ class AiPackBuilder(
             when (block) {
                 is DocxTextReader.Block.Paragraph -> {
                     text.line(if (block.heading) "## ${block.text}" else block.text)
-                    textBuilder?.append(block.text).append("\n")
+                    textBuilder?.append(block.text)?.append("\n")
                 }
 
                 is DocxTextReader.Block.Table -> {
                     for (r in block.rows) {
                         val rowText = r.joinToString("\t") { it.replace('\t', ' ') }
                         text.line(rowText)
-                        textBuilder?.append(rowText).append("\n")
+                        textBuilder?.append(rowText)?.append("\n")
                     }
                     text.line()
                 }
@@ -994,7 +1002,7 @@ class AiPackBuilder(
         val decoded = decodeText(bytes, extension)
         decoded.lineSequence().forEach { line ->
             text.line(line.trimEnd())
-            textBuilder?.append(line.trimEnd()).append("\n")
+            textBuilder?.append(line.trimEnd())?.append("\n")
         }
     }
 
