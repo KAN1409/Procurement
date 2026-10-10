@@ -34,6 +34,14 @@ import com.edib.procurement.database.Migrations
 import com.edib.procurement.database.ProcurementDatabase
 import com.edib.procurement.database.PackDao
 import com.edib.procurement.database.ProjectEntity
+import com.edib.procurement.database.RateDraft
+import com.edib.procurement.database.RateListRow
+import com.edib.procurement.database.RateObservationEntity
+import com.edib.procurement.database.RateScope
+import com.edib.procurement.database.RateSourceChoice
+import com.edib.procurement.database.RateStatus
+import com.edib.procurement.database.normalizeRateItem
+import com.edib.procurement.database.normalizeRateUnit
 import com.edib.procurement.database.SuggestionRow
 import com.edib.procurement.database.UnlinkedDocumentRow
 import com.edib.procurement.database.UnresolvedContractorRow
@@ -113,6 +121,7 @@ class ProcurementRepository(context: Context) {
     private val followUpDao = db.followUpDao()
     private val contractorDao = db.contractorDao()
     private val documentDao = db.documentDao()
+    private val rateDao = db.rateDao()
 
     private val importer = FollowUpWorkbookImporter(appContext, followUpDao, contractorDao)
     private val scanner = DocumentTreeScanner(appContext, documentDao)
@@ -406,6 +415,99 @@ fun homeCounts(): Flow<HomeCounts> {
 
     fun searchDocuments(query: String): Flow<List<DocumentListRow>> =
         documentDao.documentsFlow(query.trim(), PAGE_SIZE, 0)
+
+    // ------------------------------------------------------------ trusted rates
+
+    fun rates(query: String): Flow<List<RateListRow>> =
+        rateDao.ratesFlow(query.trim())
+
+    fun rateCount(): Flow<Int> = rateDao.countFlow()
+
+    fun rateSourceDocuments(query: String): Flow<List<RateSourceChoice>> =
+        rateDao.sourceDocuments(query.trim())
+
+    /**
+     * Persists one commercial observation without inventing any context.
+     *
+     * Quoted, approved and awarded values require a source document. OBSERVED is
+     * the only status allowed without a source, and stays visibly distinct in
+     * the ledger. Source filename/path/URI are snapshotted at save time so the
+     * evidence trail remains intelligible if the file later moves or disappears.
+     */
+    suspend fun addRate(draft: RateDraft): Long = withContext(Dispatchers.IO) {
+        val item = draft.itemRaw.trim()
+        val unit = draft.unit.trim()
+        require(item.isNotEmpty()) { "Item description is required" }
+        require(unit.isNotEmpty()) { "Unit is required" }
+        require(draft.rate.isFinite() && draft.rate > 0.0) { "Rate must be greater than zero" }
+        require(draft.quantity == null || (draft.quantity.isFinite() && draft.quantity >= 0.0)) {
+            "Quantity must be zero or greater"
+        }
+        require(draft.observedDate > 0L) { "Rate date is required" }
+        require(draft.status in RateStatus.all) { "Unknown commercial status" }
+        require(draft.scope in RateScope.all) { "Unknown commercial scope" }
+        if (draft.status in RateStatus.sourceRequired) {
+            require(draft.sourceDocumentId != null) {
+                "${draft.status.lowercase().replaceFirstChar { it.titlecase() }} rates need a source document"
+            }
+        }
+
+        val source = draft.sourceDocumentId?.let { documentDao.byId(it) }
+        if (draft.sourceDocumentId != null && source == null && draft.status in RateStatus.sourceRequired) {
+            throw IllegalArgumentException("Selected source document is no longer available")
+        }
+
+        val now = System.currentTimeMillis()
+        rateDao.insert(
+            RateObservationEntity(
+                itemRaw = item,
+                itemNormalized = normalizeRateItem(item),
+                material = draft.material?.trim()?.takeIf { it.isNotEmpty() },
+                specification = draft.specification?.trim()?.takeIf { it.isNotEmpty() },
+                dimensions = draft.dimensions?.trim()?.takeIf { it.isNotEmpty() },
+                unit = unit,
+                scope = draft.scope,
+                contractorId = draft.contractorId,
+                contractorRaw = draft.contractorRaw?.trim()?.takeIf { it.isNotEmpty() },
+                projectId = draft.projectId,
+                projectRaw = draft.projectRaw?.trim()?.takeIf { it.isNotEmpty() },
+                location = draft.location?.trim()?.takeIf { it.isNotEmpty() },
+                quantity = draft.quantity,
+                rate = draft.rate,
+                currency = draft.currency.trim().uppercase().ifEmpty { "EGP" },
+                status = draft.status,
+                observedDate = draft.observedDate,
+                sourceDocumentId = source?.id,
+                sourceEntryId = draft.sourceEntryId,
+                sourceFileNameSnapshot = source?.displayName,
+                sourceRelativePathSnapshot = source?.relativePath,
+                sourceUriSnapshot = source?.documentUri,
+                evidenceLocator = draft.evidenceLocator?.trim()?.takeIf { it.isNotEmpty() },
+                evidenceText = draft.evidenceText?.trim()?.takeIf { it.isNotEmpty() },
+                notes = draft.notes?.trim()?.takeIf { it.isNotEmpty() },
+                createdAt = now,
+                updatedAt = now
+            )
+        )
+    }
+
+    suspend fun latestComparableAwarded(
+        item: String,
+        unit: String,
+        scope: String,
+        contractorId: Long? = null
+    ): RateListRow? = withContext(Dispatchers.IO) {
+        rateDao.latestComparableAwarded(
+            itemNormalized = normalizeRateItem(item),
+            unitNormalized = normalizeRateUnit(unit),
+            scope = scope,
+            contractorId = contractorId
+        )
+    }
+
+    suspend fun deleteRate(id: Long) = withContext(Dispatchers.IO) {
+        rateDao.delete(id)
+    }
 
     // ------------------------------------------------------------ mutation
 
