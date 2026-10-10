@@ -177,6 +177,15 @@ object Migrations {
     }
 
 /**
+ * v3 -> v4: Add extracted document text used by content search.
+ */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE document ADD COLUMN extractedText TEXT NOT NULL DEFAULT ''")
+    }
+}
+
+/**
  * v4 -> v5: Add content indexing state fields to document table.
  *
  * This enables document-level content indexing separate from AI Pack generation.
