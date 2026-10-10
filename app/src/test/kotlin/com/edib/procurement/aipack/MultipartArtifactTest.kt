@@ -1,5 +1,6 @@
 package com.edib.procurement.aipack
 
+import kotlinx.coroutines.runBlocking
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.zip.ZipFile
@@ -29,11 +30,11 @@ class MultipartArtifactTest {
         sources: List<PackSource> = emptyList(),
         oversizedReason: String? = null,
         context: PartWriter.Context = PartWriter.Context(emptyList(), emptyList(), emptyList(), emptyList())
-    ): PartWriter.PartFile {
+    ): PartWriter.PartFile = runBlocking {
         val out = File(dir, name)
         val temp = File(dir, ".$name.tmp")
         val w = PartWriter("EXP-TEST", partNumber, partCount, 2, 1000)
-        return w.write(
+        w.write(
             outFile = out, tempFile = temp,
             scope = PackScope(PackScopeType.PROJECT, "Test Scope"),
             generatedAt = "2026-01-01T00:00:00",

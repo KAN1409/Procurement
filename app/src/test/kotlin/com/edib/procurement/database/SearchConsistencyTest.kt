@@ -6,9 +6,7 @@ import com.edib.procurement.database.DocumentEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
-import org.junit.Before
 import org.junit.Test
-import org.mockito.Mockito.*
 
 /**
  * Tests for Select All search consistency.
@@ -16,13 +14,6 @@ import org.mockito.Mockito.*
  * search predicate including extractedText.
  */
 class SearchConsistencyTest {
-
-    private lateinit var mockDocumentDao: DocumentDao
-
-    @Before
-    fun setup() {
-        mockDocumentDao = mock(DocumentDao::class.java)
-    }
 
     @Test
     fun testAllDocumentIdsIncludesExtractedText() = runBlocking(Dispatchers.IO) {

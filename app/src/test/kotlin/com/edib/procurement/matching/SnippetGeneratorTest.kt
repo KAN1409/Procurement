@@ -14,9 +14,7 @@ class SnippetGeneratorTest {
         val text = "This is a sample document with توريد وتركيب رخام جلالة ارتفاع 15 سم and more content."
         val query = "رخام"
 
-        val snippet = SnippetGenerator.generateSnippet(text, query)
-
-        assertNotNull(snippet)
+        val snippet = requireNotNull(SnippetGenerator.generateSnippet(text, query))
         assertTrue(snippet.text.contains("رخام"))
         assertTrue(snippet.matchStart >= 0)
         assertTrue(snippet.matchEnd > snippet.matchStart)
@@ -27,9 +25,7 @@ class SnippetGeneratorTest {
         val text = "Here is some content with توريد وتركيب رخام جلالة in the middle."
         val query = "رخام"
 
-        val snippet = SnippetGenerator.generateSnippet(text, query)
-
-        assertNotNull(snippet)
+        val snippet = requireNotNull(SnippetGenerator.generateSnippet(text, query))
         val highlighted = snippet.highlightedText
         assertTrue(highlighted.contains("«رخام»"))
     }
@@ -39,9 +35,7 @@ class SnippetGeneratorTest {
         val text = "رخام جلالة is at the beginning of this text."
         val query = "رخام"
 
-        val snippet = SnippetGenerator.generateSnippet(text, query)
-
-        assertNotNull(snippet)
+        val snippet = requireNotNull(SnippetGenerator.generateSnippet(text, query))
         assertEquals(0, snippet.matchStart)
         assertTrue(snippet.text.startsWith("رخام"))
     }
@@ -51,9 +45,7 @@ class SnippetGeneratorTest {
         val text = "This text ends with رخام"
         val query = "رخام"
 
-        val snippet = SnippetGenerator.generateSnippet(text, query)
-
-        assertNotNull(snippet)
+        val snippet = requireNotNull(SnippetGenerator.generateSnippet(text, query))
         assertTrue(snippet.text.endsWith("رخام"))
     }
 
@@ -94,11 +86,9 @@ class SnippetGeneratorTest {
         val extractedText = "This document contains توريد وتركيب رخام جلالة for the project."
         val query = "رخام"
 
-        val snippet = SnippetGenerator.generateDocumentSnippet(
+        val snippet = requireNotNull(SnippetGenerator.generateDocumentSnippet(
             displayName, relativePath, extractedText, query
-        )
-
-        assertNotNull(snippet)
+        ))
         // Should find match in extractedText (priority 1)
         assertTrue(snippet.fullText.contains("رخام"))
     }
@@ -110,11 +100,9 @@ class SnippetGeneratorTest {
         val extractedText = ""
         val query = "رخام"
 
-        val snippet = SnippetGenerator.generateDocumentSnippet(
+        val snippet = requireNotNull(SnippetGenerator.generateDocumentSnippet(
             displayName, relativePath, extractedText, query
-        )
-
-        assertNotNull(snippet)
+        ))
         // Should fall back to displayName
         assertTrue(snippet.fullText.contains("رخام"))
     }
@@ -126,11 +114,9 @@ class SnippetGeneratorTest {
         val extractedText = ""
         val query = "رخام"
 
-        val snippet = SnippetGenerator.generateDocumentSnippet(
+        val snippet = requireNotNull(SnippetGenerator.generateDocumentSnippet(
             displayName, relativePath, extractedText, query
-        )
-
-        assertNotNull(snippet)
+        ))
         // Should fall back to relativePath
         assertTrue(snippet.fullText.contains("رخام"))
     }
@@ -140,9 +126,7 @@ class SnippetGeneratorTest {
         val text = "A".repeat(500) + " رخام " + "B".repeat(500)
         val query = "رخام"
 
-        val snippet = SnippetGenerator.generateSnippet(text, query)
-
-        assertNotNull(snippet)
+        val snippet = requireNotNull(SnippetGenerator.generateSnippet(text, query))
         // Snippet should be limited to reasonable length
         assertTrue(snippet.text.length <= 250)
     }
@@ -152,9 +136,7 @@ class SnippetGeneratorTest {
         val text = "This has MARBLE and stone."
         val query = "marble"
 
-        val snippet = SnippetGenerator.generateSnippet(text, query)
-
-        assertNotNull(snippet)
+        val snippet = requireNotNull(SnippetGenerator.generateSnippet(text, query))
         assertTrue(snippet.text.contains("MARBLE"))
     }
 
@@ -163,9 +145,7 @@ class SnippetGeneratorTest {
         val text = "First رخام occurrence. Middle رخام occurrence. Last رخام occurrence."
         val query = "رخام"
 
-        val snippet = SnippetGenerator.generateSnippet(text, query)
-
-        assertNotNull(snippet)
+        val snippet = requireNotNull(SnippetGenerator.generateSnippet(text, query))
         // Should use the first occurrence
         assertTrue(snippet.text.startsWith("First رخام"))
     }

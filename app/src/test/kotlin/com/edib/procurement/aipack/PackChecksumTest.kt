@@ -1,5 +1,6 @@
 package com.edib.procurement.aipack
 
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.security.MessageDigest
 import java.util.zip.ZipFile
@@ -39,7 +40,12 @@ class PackChecksumTest {
     }
 
     /** Builds a part, rewrites its manifest, then records size+sha as the builder now does. */
-    private fun partWithRewrite(dir: File, name: String, partNumber: Int, partCount: Int): Pair<Long, String> {
+    private fun partWithRewrite(
+        dir: File,
+        name: String,
+        partNumber: Int,
+        partCount: Int
+    ): Pair<Long, String> = runBlocking {
         val out = File(dir, name)
         val temp = File(dir, ".$name.tmp")
         val w = PartWriter("EXP-T", partNumber, partCount, 2, 1_000_000)
@@ -69,7 +75,7 @@ class PackChecksumTest {
         rebuilt.renameTo(out)
 
         // Recorded AFTER the rewrite, as the fixed builder does.
-        return out.length() to sha(out)
+        out.length() to sha(out)
     }
 
     @Test
