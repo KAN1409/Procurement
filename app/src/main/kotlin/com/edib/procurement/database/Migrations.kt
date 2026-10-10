@@ -218,6 +218,73 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
             "CREATE INDEX IF NOT EXISTS index_document_indexedAt " +
                 "ON document(indexedAt)"
         )
-}
     }
+}
+
+/**
+ * v5 -> v6: Trusted commercial rate observations.
+ *
+ * Additive only. Existing procurement, document, link and content-index data is
+ * untouched. Commercial observations keep source snapshots so provenance
+ * remains readable even if a source file later disappears.
+ */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS rate_observation (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                itemRaw TEXT NOT NULL,
+                itemNormalized TEXT NOT NULL,
+                material TEXT,
+                specification TEXT,
+                dimensions TEXT,
+                unit TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                contractorId INTEGER,
+                contractorRaw TEXT,
+                projectId INTEGER,
+                projectRaw TEXT,
+                location TEXT,
+                quantity REAL,
+                rate REAL NOT NULL,
+                currency TEXT NOT NULL,
+                status TEXT NOT NULL,
+                observedDate INTEGER NOT NULL,
+                sourceDocumentId INTEGER,
+                sourceEntryId INTEGER,
+                sourceFileNameSnapshot TEXT,
+                sourceRelativePathSnapshot TEXT,
+                sourceUriSnapshot TEXT,
+                evidenceLocator TEXT,
+                evidenceText TEXT,
+                notes TEXT,
+                createdAt INTEGER NOT NULL,
+                updatedAt INTEGER NOT NULL,
+                FOREIGN KEY(contractorId) REFERENCES contractor(id)
+                    ON UPDATE NO ACTION ON DELETE SET NULL,
+                FOREIGN KEY(projectId) REFERENCES project(id)
+                    ON UPDATE NO ACTION ON DELETE SET NULL,
+                FOREIGN KEY(sourceDocumentId) REFERENCES document(id)
+                    ON UPDATE NO ACTION ON DELETE SET NULL,
+                FOREIGN KEY(sourceEntryId) REFERENCES followup_entry(id)
+                    ON UPDATE NO ACTION ON DELETE SET NULL
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_rate_observation_itemNormalized ON rate_observation(itemNormalized)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_rate_observation_unit ON rate_observation(unit)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_rate_observation_scope ON rate_observation(scope)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_rate_observation_status ON rate_observation(status)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_rate_observation_observedDate ON rate_observation(observedDate)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_rate_observation_contractorId ON rate_observation(contractorId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_rate_observation_projectId ON rate_observation(projectId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_rate_observation_sourceDocumentId ON rate_observation(sourceDocumentId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_rate_observation_sourceEntryId ON rate_observation(sourceEntryId)")
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS index_rate_observation_itemNormalized_unit_scope_status " +
+                "ON rate_observation(itemNormalized, unit, scope, status)"
+        )
+    }
+}
 }
