@@ -28,7 +28,12 @@ class Migration45Test {
         val context = ApplicationProvider.getApplicationContext<Context>()
         // Create database at version 4, then migrate to 5
         db = Room.databaseBuilder(context, ProcurementDatabase::class.java, "test.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(
+                Migrations.MIGRATION_1_2,
+                Migrations.MIGRATION_2_3,
+                Migrations.MIGRATION_3_4,
+                MIGRATION_4_5
+            )
             .allowMainThreadQueries()
             .build()
     }
