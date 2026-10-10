@@ -160,6 +160,8 @@ data class RateDraft(
     val observedDate: Long,
     val sourceDocumentId: Long? = null,
     val sourceEntryId: Long? = null,
+    /** Optional review-candidate origin. Confirmed only after this draft saves. */
+    val candidateId: Long? = null,
     val evidenceLocator: String? = null,
     val evidenceText: String? = null,
     val notes: String? = null
