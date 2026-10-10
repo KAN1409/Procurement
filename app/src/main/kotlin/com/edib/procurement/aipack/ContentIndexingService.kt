@@ -8,8 +8,10 @@ import com.edib.procurement.database.DocumentEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicInteger
@@ -86,9 +88,7 @@ class ContentIndexingService(
         var totalFailed = 0
 
         try {
-            while (!currentCoroutineContext().isActive) {
-                // Check if we should continue
-            }
+            if (!currentCoroutineContext().isActive) return
 
             // Get total count of documents to process
             val totalToProcess = documentDao.countNeedingIndexing()
