@@ -81,6 +81,7 @@ import com.edib.procurement.aipack.PackScope
 import com.edib.procurement.aipack.PackScopeType
 import com.edib.procurement.matching.MatchingEngine
 import com.edib.procurement.matching.MatchingReport
+import androidx.room.withTransaction
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
@@ -484,42 +485,47 @@ fun homeCounts(): Flow<HomeCounts> {
             throw IllegalArgumentException("Selected source document is no longer available")
         }
 
+        val currency = draft.currency.trim().uppercase()
+        require(currency.isNotEmpty()) { "Currency is required" }
+
         val now = System.currentTimeMillis()
-        val savedRateId = rateDao.insert(
-            RateObservationEntity(
-                itemRaw = item,
-                itemNormalized = normalizeRateItem(item),
-                material = draft.material?.trim()?.takeIf { it.isNotEmpty() },
-                specification = draft.specification?.trim()?.takeIf { it.isNotEmpty() },
-                dimensions = draft.dimensions?.trim()?.takeIf { it.isNotEmpty() },
-                unit = unit,
-                scope = draft.scope,
-                contractorId = draft.contractorId,
-                contractorRaw = draft.contractorRaw?.trim()?.takeIf { it.isNotEmpty() },
-                projectId = draft.projectId,
-                projectRaw = draft.projectRaw?.trim()?.takeIf { it.isNotEmpty() },
-                location = draft.location?.trim()?.takeIf { it.isNotEmpty() },
-                quantity = draft.quantity,
-                rate = draft.rate,
-                currency = draft.currency.trim().uppercase().ifEmpty { "EGP" },
-                status = draft.status,
-                observedDate = draft.observedDate,
-                sourceDocumentId = source?.id,
-                sourceEntryId = draft.sourceEntryId,
-                sourceFileNameSnapshot = source?.displayName,
-                sourceRelativePathSnapshot = source?.relativePath,
-                sourceUriSnapshot = source?.documentUri,
-                evidenceLocator = draft.evidenceLocator?.trim()?.takeIf { it.isNotEmpty() },
-                evidenceText = draft.evidenceText?.trim()?.takeIf { it.isNotEmpty() },
-                notes = draft.notes?.trim()?.takeIf { it.isNotEmpty() },
-                createdAt = now,
-                updatedAt = now
+        db.withTransaction {
+            val savedRateId = rateDao.insert(
+                RateObservationEntity(
+                    itemRaw = item,
+                    itemNormalized = normalizeRateItem(item),
+                    material = draft.material?.trim()?.takeIf { it.isNotEmpty() },
+                    specification = draft.specification?.trim()?.takeIf { it.isNotEmpty() },
+                    dimensions = draft.dimensions?.trim()?.takeIf { it.isNotEmpty() },
+                    unit = unit,
+                    scope = draft.scope,
+                    contractorId = draft.contractorId,
+                    contractorRaw = draft.contractorRaw?.trim()?.takeIf { it.isNotEmpty() },
+                    projectId = draft.projectId,
+                    projectRaw = draft.projectRaw?.trim()?.takeIf { it.isNotEmpty() },
+                    location = draft.location?.trim()?.takeIf { it.isNotEmpty() },
+                    quantity = draft.quantity,
+                    rate = draft.rate,
+                    currency = currency,
+                    status = draft.status,
+                    observedDate = draft.observedDate,
+                    sourceDocumentId = source?.id,
+                    sourceEntryId = draft.sourceEntryId,
+                    sourceFileNameSnapshot = source?.displayName,
+                    sourceRelativePathSnapshot = source?.relativePath,
+                    sourceUriSnapshot = source?.documentUri,
+                    evidenceLocator = draft.evidenceLocator?.trim()?.takeIf { it.isNotEmpty() },
+                    evidenceText = draft.evidenceText?.trim()?.takeIf { it.isNotEmpty() },
+                    notes = draft.notes?.trim()?.takeIf { it.isNotEmpty() },
+                    createdAt = now,
+                    updatedAt = now
+                )
             )
-        )
-        draft.candidateId?.let { candidateId ->
-            rateCandidateDao.confirm(candidateId, savedRateId, now)
+            draft.candidateId?.let { candidateId ->
+                rateCandidateDao.confirm(candidateId, savedRateId, now)
+            }
+            savedRateId
         }
-        savedRateId
     }
 
     suspend fun latestComparableAwarded(
