@@ -184,6 +184,21 @@ interface RateCandidateDao {
     @Query(
         """
         UPDATE rate_candidate
+        SET status = 'STALE'
+        WHERE status = 'PENDING'
+          AND sourceDocumentId IS NOT NULL
+          AND EXISTS (
+              SELECT 1 FROM document d
+              WHERE d.id = rate_candidate.sourceDocumentId
+                AND (d.isMissing = 1 OR d.lastModified <> rate_candidate.sourceModifiedAt)
+          )
+        """
+    )
+    suspend fun markChangedOrMissingPendingStale()
+
+    @Query(
+        """
+        UPDATE rate_candidate
         SET status = 'DISMISSED', reviewedAt = :now
         WHERE id = :id AND status = 'PENDING'
         """
