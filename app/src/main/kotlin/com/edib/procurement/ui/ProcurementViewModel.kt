@@ -17,6 +17,9 @@ import com.edib.procurement.database.LinkedDocumentRow
 import com.edib.procurement.database.ProjectWithCount
 import com.edib.procurement.database.ProjectDetail
 import com.edib.procurement.database.ContractorDetail
+import com.edib.procurement.database.RateDraft
+import com.edib.procurement.database.RateListRow
+import com.edib.procurement.database.RateSourceChoice
 import com.edib.procurement.database.UnlinkedDocumentRow
 import com.edib.procurement.matching.MatchingReport
 import com.edib.procurement.database.LinkEntryRow
@@ -82,6 +85,14 @@ class ProcurementViewModel(app: Application) : AndroidViewModel(app) {
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
 
+    /** Rates use their own search state so commercial filtering never mutates other screens. */
+    private val _rateQuery = MutableStateFlow("")
+    val rateQuery: StateFlow<String> = _rateQuery.asStateFlow()
+
+    /** Separate document search used only while choosing evidence for a rate. */
+    private val _rateSourceQuery = MutableStateFlow("")
+    val rateSourceQuery: StateFlow<String> = _rateSourceQuery.asStateFlow()
+
     private var scanJob: Job? = null
 
     val counts: StateFlow<HomeCounts?> = repo.homeCounts()
@@ -117,6 +128,17 @@ class ProcurementViewModel(app: Application) : AndroidViewModel(app) {
     /** Count only, for screens that need the number and not the rows. */
     val unlinkedCount: StateFlow<Int> = repo.unlinkedCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    val rates: StateFlow<List<RateListRow>> =
+        _rateQuery.flatMapLatest { q -> repo.rates(q) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val rateCount: StateFlow<Int> = repo.rateCount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    val rateSourceChoices: StateFlow<List<RateSourceChoice>> =
+        _rateSourceQuery.flatMapLatest { q -> repo.rateSourceDocuments(q) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     init {
         refreshConfig()
@@ -159,6 +181,10 @@ val groupCount: StateFlow<Int> = repo.groupCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
 fun setQuery(q: String) { _query.value = q }
+
+fun setRateQuery(q: String) { _rateQuery.value = q }
+
+fun setRateSourceQuery(q: String) { _rateSourceQuery.value = q }
 
     fun clearMessage() { _message.value = null }
 
@@ -350,6 +376,27 @@ fun rescanDocumentTree() {
 
     fun refreshConfig() {
         viewModelScope.launch { _config.value = repo.currentConfig() }
+    }
+
+    fun addRate(draft: RateDraft, onSaved: () -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                repo.addRate(draft)
+                _rateSourceQuery.value = ""
+                say("Rate observation saved")
+                onSaved()
+            } catch (e: Throwable) {
+                say(e.message ?: "Could not save rate", isError = true)
+            }
+        }
+    }
+
+    fun deleteRate(id: Long) {
+        viewModelScope.launch {
+            runCatching { repo.deleteRate(id) }
+                .onSuccess { say("Rate observation deleted") }
+                .onFailure { say(it.message ?: "Could not delete rate", isError = true) }
+        }
     }
 
     fun openDocument(documentUri: String, extension: String?, mime: String?) {
