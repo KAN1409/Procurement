@@ -17,9 +17,14 @@ class RateNormalizationTest {
     }
 
     @Test
-    fun normalizationDoesNotInventSynonymsOrUnits() {
+    fun normalizationUsesOnlyControlledUnitAliases() {
         assertEquals("marble skirting", normalizeRateItem("Marble   Skirting"))
         assertEquals("lm", normalizeRateUnit(" LM "))
-        assertEquals("m²", normalizeRateUnit("m²"))
+        assertEquals("lm", normalizeRateUnit("متر طولي"))
+        assertEquals("m2", normalizeRateUnit("m2"))
+        assertEquals("m2", normalizeRateUnit("m²"))
+        assertEquals("m2", normalizeRateUnit("sqm"))
+        assertEquals("m3", normalizeRateUnit("m³"))
+        assertEquals("custom-unit", normalizeRateUnit("Custom-Unit"))
     }
 }
