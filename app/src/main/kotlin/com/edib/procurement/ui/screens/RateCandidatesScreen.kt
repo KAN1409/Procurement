@@ -268,7 +268,7 @@ private fun CandidateRow(
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            "${candidate.sourceFileName} · ${candidate.evidenceLocator}",
+            "${candidate.sourceFileName} · ${candidate.evidenceLocator} · #${candidate.id}",
             style = MaterialTheme.typography.labelSmall,
             color = ProcurementColors.TextTertiary,
             maxLines = 2,

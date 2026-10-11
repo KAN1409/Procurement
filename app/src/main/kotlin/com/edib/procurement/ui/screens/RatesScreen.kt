@@ -1096,7 +1096,7 @@ fun AddRateScreen(
                 Spacer(Modifier.height(10.dp))
             }
             SectionLabel("Commercial item")
-            RateField("Item description *", item) { item = it }
+            RateField("Item description *", item, singleLine = false) { item = it }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 RateField(
                     label = "Material",
