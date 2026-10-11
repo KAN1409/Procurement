@@ -1420,7 +1420,7 @@ private fun ChoiceRow(
             if (value == selected) {
                 Button(
                     onClick = { onSelect(value) },
-                    modifier = Modifier.semantics { selected = true },
+                    modifier = Modifier.semantics { this.selected = true },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = ProcurementColors.AccentRed
                     )
@@ -1430,7 +1430,7 @@ private fun ChoiceRow(
             } else {
                 OutlinedButton(
                     onClick = { onSelect(value) },
-                    modifier = Modifier.semantics { selected = false }
+                    modifier = Modifier.semantics { this.selected = false }
                 ) {
                     Text(label(value), style = MaterialTheme.typography.labelSmall)
                 }
