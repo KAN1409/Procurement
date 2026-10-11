@@ -32,6 +32,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
@@ -1418,6 +1420,7 @@ private fun ChoiceRow(
             if (value == selected) {
                 Button(
                     onClick = { onSelect(value) },
+                    modifier = Modifier.semantics { selected = true },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = ProcurementColors.AccentRed
                     )
@@ -1425,7 +1428,10 @@ private fun ChoiceRow(
                     Text(label(value), style = MaterialTheme.typography.labelSmall)
                 }
             } else {
-                OutlinedButton(onClick = { onSelect(value) }) {
+                OutlinedButton(
+                    onClick = { onSelect(value) },
+                    modifier = Modifier.semantics { selected = false }
+                ) {
                     Text(label(value), style = MaterialTheme.typography.labelSmall)
                 }
             }
