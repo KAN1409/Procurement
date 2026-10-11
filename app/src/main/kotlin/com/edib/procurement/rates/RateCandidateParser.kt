@@ -161,8 +161,8 @@ object RateCandidateParser {
     }
 
     internal fun reconstructMeasuredItem(evidence: String, fragment: String): String? {
-        val row = evidence.trim().replace(Regex("\s+"), " ")
-        val fragmentText = fragment.trim().replace(Regex("\s+"), " ")
+        val row = evidence.trim().replace(Regex("""\s+"""), " ")
+        val fragmentText = fragment.trim().replace(Regex("""\s+"""), " ")
         if (fragmentText.length < 12 || !row.contains(fragmentText)) return null
         if (!Regex("""^(?:بالمتر\s+(?:المسطح|الطولي|المكعب)|بالعدد|بالمقطوعية)\s*[-:]?\s*""").containsMatchIn(row)) return null
         val start = row.indexOf(fragmentText)
