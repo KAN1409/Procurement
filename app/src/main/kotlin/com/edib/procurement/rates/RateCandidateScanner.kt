@@ -32,6 +32,7 @@ class RateCandidateScanner(
         val batchSize = 25
 
         dao.markChangedOrMissingPendingStale()
+        dao.markSupersededPendingStale(RateCandidateParser.PARSER_VERSION)
 
         while (currentCoroutineContext().isActive) {
             val docs = dao.indexedCorpusDocuments(batchSize, offset)
