@@ -8,7 +8,7 @@ import java.security.MessageDigest
 import java.util.Locale
 
 object RateCandidateParser {
-    const val PARSER_VERSION = "rate-candidate-1.2"
+    const val PARSER_VERSION = "rate-candidate-1.3"
     private const val MAX_CANDIDATES_PER_DOCUMENT = 500
 
     data class HeaderMap(
@@ -128,9 +128,14 @@ object RateCandidateParser {
             val c = cells[idx]
             detectUnit(c) != null || detectCurrency(c) != null || extractOnlyNumber(c) != null
         }
-        val item = longestDescriptionCell(cells, excluded)
+        val cellItem = longestDescriptionCell(cells, excluded)
             ?: descriptionFromLine(evidence)
             ?: return null
+        // DOCX extraction may split a single BOQ description across tab cells.
+        // The longest individual cell can be only its trailing accessories clause.
+        // Reconstruct only when the row visibly starts with a measured BOQ item
+        // and the fragment is contained in the descriptive prefix before prices.
+        val item = reconstructMeasuredItem(evidence, cellItem) ?: cellItem
 
         val confidence = when {
             unit != null && currency != null -> 74
@@ -153,6 +158,21 @@ object RateCandidateParser {
             method = "ROW_HEURISTIC",
             now = now
         )
+    }
+
+    internal fun reconstructMeasuredItem(evidence: String, fragment: String): String? {
+        val row = evidence.trim().replace(Regex("\\s+"), " ")
+        val fragmentText = fragment.trim().replace(Regex("\\s+"), " ")
+        if (fragmentText.length < 12 || !row.contains(fragmentText)) return null
+        if (!Regex("""^(?:بالمتر\\s+(?:المسطح|الطولي|المكعب)|بالعدد|بالمقطوعية)\\s*[-:]?\\s*""").containsMatchIn(row)) return null
+        val start = row.indexOf(fragmentText)
+        if (start <= 60 || !row.substring(0, start).contains("توريد") && !row.substring(0, start).contains("تركيب")) return null
+        val end = start + fragmentText.length
+        val after = row.substring(end).trim()
+        // Require an unmistakable commercial numeric suffix. Never swallow
+        // quantity, rate, or amount into the item description.
+        if (!Regex("""^(?:(?:م\\s*[2٢²]|m2|م\\s*ط|lm|عدد|each)\\s+)?[0-9٠-٩۰-۹]+(?:[,.٬٫][0-9٠-٩۰-۹]+)?\\s+[0-9٠-٩۰-۹]+(?:[,.٬٫][0-9٠-٩۰-۹]+)?(?:\\s+[0-9٠-٩۰-۹]+(?:[,.٬٫][0-9٠-٩۰-۹]+)?)?\\s*$""").matches(after)) return null
+        return row.substring(0, end).trim().takeIf { it.length > fragmentText.length + 60 }
     }
 
     private fun buildCandidate(
