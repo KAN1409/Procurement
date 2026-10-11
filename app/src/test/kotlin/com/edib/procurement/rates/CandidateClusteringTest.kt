@@ -6,6 +6,12 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 class CandidateClusteringTest {
+    @Test fun searchExposesSources() {
+        assertEquals(true, CandidateClustering.showSources("gypsum", false))
+        assertEquals(true, CandidateClustering.showSources("", true))
+        assertEquals(false, CandidateClustering.showSources("", false))
+    }
+
     @Test fun equivalentUnitsGroupTogether() {
         assertEquals(
             CandidateClustering.key("توريد رخام", "م٢", "SUPPLY", "EGP"),

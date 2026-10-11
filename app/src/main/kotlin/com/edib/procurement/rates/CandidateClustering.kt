@@ -26,6 +26,10 @@ object CandidateClustering {
         return GroupKey(normalizedItem, normalizedUnit, scope.orEmpty(), currency.orEmpty().uppercase(Locale.ROOT))
     }
 
+    /** Search results expose matching evidence without a second tap. */
+    fun showSources(query: String, manuallyExpanded: Boolean): Boolean =
+        query.isNotBlank() || manuallyExpanded
+
     fun group(candidates: List<RateCandidateRow>): List<Group> =
         candidates.asSequence()
             .filter { it.status == "PENDING" }
