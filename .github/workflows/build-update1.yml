@@ -64,7 +64,10 @@ jobs:
       - name: Run app unit tests
         id: unit_tests
         shell: bash
-        run: bash gradlew :app:testDebugUnitTest --stacktrace --no-daemon --build-cache
+        run: |
+          mkdir -p build-artifacts
+          set -o pipefail
+          bash gradlew :app:testDebugUnitTest --stacktrace --no-daemon --build-cache 2>&1 | tee build-artifacts/unit-test-console.log
 
       - name: Verify signing keystore exists
         id: keystore
@@ -142,6 +145,14 @@ jobs:
             echo "- Commit: \`$GITHUB_SHA\`"
             echo "- Run: [#$GITHUB_RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"
             echo "- Unit tests / compilation: **$TEST_RESULT**"
+            if [ "$TEST_RESULT" = "failure" ] && [ -f build-artifacts/unit-test-console.log ]; then
+              echo ""
+              echo "### Failure hints (unit tests / Kotlin)"
+              echo '~~~text'
+              grep -E '^e: |^> Task .* FAILED|^Execution failed for task|^There were failing tests' build-artifacts/unit-test-console.log | head -n 12 || true
+              echo '~~~'
+              echo "Full context remains in the GitHub Actions step log and test reports."
+            fi
             echo "- Keystore: **$KEYSTORE_RESULT**"
             echo "- APK build: **$BUILD_RESULT**"
             echo "- APK checksum and certificate: **$IDENTITY_RESULT**"

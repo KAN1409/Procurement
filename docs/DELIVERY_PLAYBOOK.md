@@ -114,3 +114,14 @@ Compare the next 20 runs with the audit baseline: success/failure/cancellation
 counts, wall-clock duration, and time to device acceptance. Distinguish product
 failures from workflow failures. Revert only the workflow-summary change if it
 breaks CI; retain the existing test, signing, and APK gates.
+
+### Automated failure hints
+
+The unit-test step now captures its console output while preserving the original
+Gradle exit status with `pipefail`. If it fails, the job summary includes up to
+12 Kotlin compiler / failed-task hints. The full log and JUnit reports remain
+the authority for diagnosis. This is not a replacement for source review or
+compilation; it reduces the time spent locating the first actionable error.
+
+The console capture stays inside the ephemeral CI workspace and is not
+uploaded as a separate artifact. No application data or test corpus is changed.
