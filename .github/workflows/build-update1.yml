@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   verify-and-build:
-    name: Verify${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/real-corpus-rate-refresh') && ' + APK' || '' }}
+    name: Verify${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/real-corpus-rate-refresh' || github.ref == 'refs/heads/feature/candidate-clustering') && ' + APK' || '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -66,7 +66,7 @@ jobs:
         run: bash gradlew :app:testDebugUnitTest --stacktrace --no-daemon --build-cache
 
       - name: Verify signing keystore exists
-        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/real-corpus-rate-refresh')
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/real-corpus-rate-refresh' || github.ref == 'refs/heads/feature/candidate-clustering')
         shell: bash
         run: |
           test -f keystore/debug.keystore
@@ -76,12 +76,12 @@ jobs:
             -alias androiddebugkey >/dev/null
 
       - name: Build debug APK
-        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/real-corpus-rate-refresh')
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/real-corpus-rate-refresh' || github.ref == 'refs/heads/feature/candidate-clustering')
         shell: bash
         run: bash gradlew :app:assembleDebug --stacktrace --no-daemon --build-cache
 
       - name: Record APK checksums and signing certificate
-        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/real-corpus-rate-refresh')
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/real-corpus-rate-refresh' || github.ref == 'refs/heads/feature/candidate-clustering')
         shell: bash
         run: |
           APK="app/build/outputs/apk/debug/app-debug.apk"
@@ -98,7 +98,7 @@ jobs:
           "$APKSIGNER" verify --print-certs "$APK" | tee build-artifacts/APK_SIGNING_CERT.txt
 
       - name: Upload APK
-        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/real-corpus-rate-refresh')
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/real-corpus-rate-refresh' || github.ref == 'refs/heads/feature/candidate-clustering')
         uses: actions/upload-artifact@v4
         with:
           name: Procurement-APK
