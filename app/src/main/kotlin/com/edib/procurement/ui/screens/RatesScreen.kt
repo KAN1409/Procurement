@@ -759,12 +759,6 @@ fun RateCheckScreen(
                             ?.let(::parseCommercialNumber)
 
                         localError = when {
-                            candidate != null &&
-                                item.trim() == candidate.itemRaw.trim() &&
-                                candidate.evidenceText.trim().length > candidate.itemRaw.trim().length + 60 &&
-                                candidate.evidenceText.contains(candidate.itemRaw.trim()) &&
-                                !candidate.evidenceText.trimStart().startsWith(candidate.itemRaw.trim()) ->
-                                "Item may be a trailing specification, not the main BOQ item. Verify and correct the description against the source before saving."
                             item.isBlank() -> "Item description is required."
                             unit.isBlank() -> "Unit is required."
                             proposed == null || proposed <= 0.0 -> "Enter a valid proposed rate."
@@ -1318,6 +1312,12 @@ fun AddRateScreen(
                         val dateMillis = parseRateDate(date)
 
                         localError = when {
+                            candidate != null &&
+                                item.trim() == candidate.itemRaw.trim() &&
+                                candidate.evidenceText.trim().length > candidate.itemRaw.trim().length + 60 &&
+                                candidate.evidenceText.contains(candidate.itemRaw.trim()) &&
+                                !candidate.evidenceText.trimStart().startsWith(candidate.itemRaw.trim()) ->
+                                "Item may be a trailing specification, not the main BOQ item. Verify and correct the description against the source before saving."
                             item.isBlank() -> "Item description is required."
                             unit.isBlank() -> "Unit is required."
                             rateNumber == null || rateNumber <= 0.0 -> "Enter a valid rate greater than zero."
