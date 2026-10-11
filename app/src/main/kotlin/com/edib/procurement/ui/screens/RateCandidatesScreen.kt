@@ -48,7 +48,7 @@ fun RateCandidatesScreen(
     val candidates by vm.rateCandidates.collectAsStateWithLifecycle()
     val pendingCount by vm.rateCandidateCount.collectAsStateWithLifecycle()
     val scan by vm.rateCandidateScan.collectAsStateWithLifecycle()
-    val clusters = CandidateClustering.group(candidates)
+    val clusters = remember(candidates) { CandidateClustering.group(candidates) }
     val expanded = remember { mutableStateMapOf<String, Boolean>() }
 
     Column(
@@ -147,6 +147,7 @@ fun RateCandidatesScreen(
                             it.sourceDocumentId?.toString()
                                 ?: it.sourceUri.ifBlank { it.sourceRelativePath }
                         }.distinct().size
+                        val evidence = remember(rows) { CandidateClustering.evidenceSummary(rows) }
                         val low = rows.minOf { it.rate }
                         val high = rows.maxOf { it.rate }
                         Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
@@ -170,6 +171,18 @@ fun RateCandidatesScreen(
                             )
                             Text(
                                 "Repeated values may be copied across files; not independent bids, approved prices, or necessarily comparable.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = ProcurementColors.TextTertiary
+                            )
+                            Text(
+                                "${evidence.repeatedEvidenceGroups} repeated evidence groups · " +
+                                    "${evidence.matchingValueGroups} matching value groups" +
+                                    (if (evidence.unknownSources > 0) " · ${evidence.unknownSources} unknown sources" else ""),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = ProcurementColors.TextSecondary
+                            )
+                            Text(
+                                "Evidence relationships only; no candidates merged or independent offers inferred.",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = ProcurementColors.TextTertiary
                             )

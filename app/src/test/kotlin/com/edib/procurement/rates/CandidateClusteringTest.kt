@@ -6,6 +6,43 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 class CandidateClusteringTest {
+    private fun example(id: Long, documentId: Long?, path: String, rate: Double = 740.0,
+                        status: String = "PENDING") = RateCandidateRow(
+        id, "key-$id", documentId, "same.docx", path, "", "docx", null, 1L,
+        "توريد سقف", "م2", 720.0, rate, "EGP", "SUPPLY_INSTALL",
+        "line 11", "720 م2 740", 80, "TABLE", status, null
+    )
+
+    @Test fun matchingValuesAcrossDistinctSourcesAreNotRepeatedEvidence() {
+        val result = CandidateClustering.evidenceSummary(listOf(
+            example(4994, 10, "SBH/same.docx"), example(4718, 20, "JPH/same.docx")
+        ))
+        assertEquals(0, result.repeatedEvidenceGroups)
+        assertEquals(1, result.matchingValueGroups)
+    }
+
+    @Test fun sameSourceEvidenceIsDetectedWithoutDroppingRows() {
+        val rows = listOf(example(1, 10, "SBH/same.docx"), example(2, 10, "SBH/same.docx"))
+        assertEquals(1, CandidateClustering.evidenceSummary(rows).repeatedEvidenceGroups)
+        assertEquals(2, CandidateClustering.group(rows).single().candidates.size)
+    }
+
+    @Test fun unknownSourcesAndStaleRowsAreConservative() {
+        val result = CandidateClustering.evidenceSummary(listOf(
+            example(1, null, ""), example(2, null, "", 850.0),
+            example(3, null, "", status = "STALE")
+        ))
+        assertEquals(2, result.unknownSources)
+        assertEquals(0, result.repeatedEvidenceGroups)
+        assertEquals(0, result.matchingValueGroups)
+    }
+
+    @Test fun equalConfidenceUsesStableCandidateId() {
+        assertEquals(listOf(2L, 9L), CandidateClustering.group(listOf(
+            example(9, 10, "A"), example(2, 20, "B")
+        )).single().candidates.map { it.id })
+    }
+
     @Test fun searchExposesSources() {
         assertEquals(true, CandidateClustering.showSources("gypsum", false))
         assertEquals(true, CandidateClustering.showSources("", true))
