@@ -1312,11 +1312,12 @@ fun AddRateScreen(
                         val dateMillis = parseRateDate(date)
 
                         localError = when {
-                            candidate != null &&
-                                item.trim() == candidate.itemRaw.trim() &&
-                                candidate.evidenceText.trim().length > candidate.itemRaw.trim().length + 60 &&
-                                candidate.evidenceText.contains(candidate.itemRaw.trim()) &&
-                                !candidate.evidenceText.trimStart().startsWith(candidate.itemRaw.trim()) ->
+                            candidate?.let { c ->
+                                item.trim() == c.itemRaw.trim() &&
+                                    c.evidenceText.trim().length > c.itemRaw.trim().length + 60 &&
+                                    c.evidenceText.contains(c.itemRaw.trim()) &&
+                                    !c.evidenceText.trimStart().startsWith(c.itemRaw.trim())
+                            } == true ->
                                 "Item may be a trailing specification, not the main BOQ item. Verify and correct the description against the source before saving."
                             item.isBlank() -> "Item description is required."
                             unit.isBlank() -> "Unit is required."
