@@ -62,10 +62,12 @@ jobs:
           chmod +x gradlew
 
       - name: Run app unit tests
+        id: unit_tests
         shell: bash
         run: bash gradlew :app:testDebugUnitTest --stacktrace --no-daemon --build-cache
 
       - name: Verify signing keystore exists
+        id: keystore
         if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/real-corpus-rate-refresh' || github.ref == 'refs/heads/feature/candidate-clustering')
         shell: bash
         run: |
@@ -76,11 +78,13 @@ jobs:
             -alias androiddebugkey >/dev/null
 
       - name: Build debug APK
+        id: apk_build
         if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/real-corpus-rate-refresh' || github.ref == 'refs/heads/feature/candidate-clustering')
         shell: bash
         run: bash gradlew :app:assembleDebug --stacktrace --no-daemon --build-cache
 
       - name: Record APK checksums and signing certificate
+        id: apk_identity
         if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/real-corpus-rate-refresh' || github.ref == 'refs/heads/feature/candidate-clustering')
         shell: bash
         run: |
@@ -98,6 +102,7 @@ jobs:
           "$APKSIGNER" verify --print-certs "$APK" | tee build-artifacts/APK_SIGNING_CERT.txt
 
       - name: Upload APK
+        id: apk_upload
         if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/real-corpus-rate-refresh' || github.ref == 'refs/heads/feature/candidate-clustering')
         uses: actions/upload-artifact@v4
         with:
@@ -119,3 +124,40 @@ jobs:
             app/build/test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+      # Single-run acceptance summary. Never conceal a failing gate or print secrets.
+      - name: Publish delivery and failure summary
+        if: always()
+        env:
+          TEST_RESULT: ${{ steps.unit_tests.outcome }}
+          KEYSTORE_RESULT: ${{ steps.keystore.outcome }}
+          BUILD_RESULT: ${{ steps.apk_build.outcome }}
+          IDENTITY_RESULT: ${{ steps.apk_identity.outcome }}
+          UPLOAD_RESULT: ${{ steps.apk_upload.outcome }}
+        shell: bash
+        run: |
+          {
+            echo "## Procurement CI delivery"
+            echo ""
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Run: [#$GITHUB_RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"
+            echo "- Unit tests / compilation: **$TEST_RESULT**"
+            echo "- Keystore: **$KEYSTORE_RESULT**"
+            echo "- APK build: **$BUILD_RESULT**"
+            echo "- APK checksum and certificate: **$IDENTITY_RESULT**"
+            echo "- APK artifact upload: **$UPLOAD_RESULT**"
+            echo ""
+            if [ "$TEST_RESULT" != "success" ]; then
+              echo "**Next action:** inspect the Run app unit tests log for Kotlin compilation or test failures. No APK is accepted."
+            elif [ "$KEYSTORE_RESULT" = "failure" ]; then
+              echo "**Next action:** investigate the signing keystore gate. Do not install a replacement-signed APK."
+            elif [ "$BUILD_RESULT" = "failure" ]; then
+              echo "**Next action:** inspect Build debug APK logs. No APK is accepted."
+            elif [ "$IDENTITY_RESULT" = "failure" ] || [ "$UPLOAD_RESULT" = "failure" ]; then
+              echo "**Next action:** investigate APK identity/artifact publication. Do not install an unverified APK."
+            elif [ "$BUILD_RESULT" = "success" ] && [ "$IDENTITY_RESULT" = "success" ] && [ "$UPLOAD_RESULT" = "success" ]; then
+              echo "**Next action:** use the Procurement-APK artifact for targeted Android Harness QA. Verify checksum and certificate before an in-place upgrade; preserve app data."
+            else
+              echo "**Next action:** review the workflow result and any skipped steps."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

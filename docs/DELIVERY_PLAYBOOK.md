@@ -75,3 +75,42 @@ Stop and fix immediately only for:
 - broken core workflow
 
 Cosmetic or rare edge issues go to backlog unless they block acceptance.
+
+## Workflow optimization audit (2026-10-11)
+
+Measured sample: 20 most recent candidate-clustering branch CI runs: 9 success,
+8 failure, 3 cancelled. The latest successful run took approximately 154 seconds
+from creation to completion. These are baseline observations, not a causal
+benchmark or a prediction of future performance.
+
+### Milestone preflight (before one push)
+
+1. Inspect all touched source and related declarations/call sites.
+2. Check for ambiguous Kotlin identifiers and type mismatches.
+3. Include focused regression tests with the implementation whenever practical.
+4. Review changed paths, business invariants, and migration implications.
+5. Batch cohesive work into one commit/CI cycle; never bypass the CI gate.
+
+The GitHub connector alone cannot run a local Kotlin compiler. Do not claim
+that a source review is a compilation pass; GitHub Actions remains build authority.
+
+### CI and handoff
+
+- The candidate-clustering branch deliberately builds an APK after unit tests
+  because Android Harness is its runtime acceptance gate. Other feature
+  branches normally run tests only. This branch-specific exception supersedes
+  the generic fast-gate description above.
+- GitHub Actions publishes a step summary on success or failure, with the
+  completed gate outcomes and a next action. The summary is informational:
+  failed compilation/tests/build/signing still fail the job.
+- APK identity and signing checks remain mandatory before any device install.
+- Android Harness performs targeted real-device checks, not repository fixes.
+- No uninstall, app-data clearing, rescan, commercial-value mutation, or
+  main-branch merge as part of workflow optimization.
+
+### Measurement and rollback
+
+Compare the next 20 runs with the audit baseline: success/failure/cancellation
+counts, wall-clock duration, and time to device acceptance. Distinguish product
+failures from workflow failures. Revert only the workflow-summary change if it
+breaks CI; retain the existing test, signing, and APK gates.
