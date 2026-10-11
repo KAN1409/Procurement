@@ -171,9 +171,9 @@ object RateCandidateParser {
         val after = row.substring(end).trim()
         // Require an unmistakable commercial numeric suffix. Never swallow
         // quantity, rate, or amount into the item description.
-        val suffixTokens = after.split(Regex("""\\s+"""))
+        val suffixTokens = after.split(' ')
         val numericTokens = if (suffixTokens.firstOrNull()?.matches(
-                Regex("""(?i)(?:م\\s*[2٢²]|m2|lm|each|عدد)""")
+                Regex("""(?i)(?:م[2٢²]|m2|lm|each|عدد)""")
             ) == true) suffixTokens.drop(1) else suffixTokens
         if (numericTokens.size !in 2..3 ||
             numericTokens.any { token -> !NUMBER_REGEX.matches(token) }) return null
