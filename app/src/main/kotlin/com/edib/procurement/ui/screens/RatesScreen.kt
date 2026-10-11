@@ -1015,7 +1015,7 @@ fun AddRateScreen(
     var quantity by rememberSaveable { mutableStateOf("") }
     var rate by rememberSaveable { mutableStateOf("") }
     var currency by rememberSaveable { mutableStateOf("EGP") }
-    var status by rememberSaveable { mutableStateOf(RateStatus.AWARDED) }
+    var status by rememberSaveable { mutableStateOf(RateStatus.OBSERVED) }
     var date by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
     var evidenceLocator by rememberSaveable { mutableStateOf("") }
     var evidenceText by rememberSaveable { mutableStateOf("") }
