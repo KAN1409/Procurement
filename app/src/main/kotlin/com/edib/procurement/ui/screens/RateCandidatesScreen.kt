@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.edib.procurement.database.RateCandidateRow
+import com.edib.procurement.rates.CandidateClustering
 import com.edib.procurement.ui.ProcurementViewModel
 import com.edib.procurement.ui.components.Chip
 import com.edib.procurement.ui.components.EmptyState
@@ -45,6 +46,7 @@ fun RateCandidatesScreen(
     val candidates by vm.rateCandidates.collectAsStateWithLifecycle()
     val pendingCount by vm.rateCandidateCount.collectAsStateWithLifecycle()
     val scan by vm.rateCandidateScan.collectAsStateWithLifecycle()
+    val clusters = CandidateClustering.group(candidates)
 
     Column(
         Modifier
@@ -134,7 +136,18 @@ fun RateCandidatesScreen(
                     vertical = 4.dp
                 )
             ) {
-                items(candidates, key = { it.id }) { candidate ->
+                clusters.forEach { cluster ->
+                    if (cluster.candidates.size > 1) {
+                        item(key = "cluster:" + cluster.key.toString()) {
+                            Text(
+                                "SIMILAR ITEMS · ${cluster.candidates.size} candidates · ${cluster.key.unit}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = ProcurementColors.TextSecondary,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        }
+                    }
+                    items(cluster.candidates, key = { it.id }) { candidate ->
                     CandidateRow(
                         vm = vm,
                         candidate = candidate,
@@ -148,6 +161,7 @@ fun RateCandidatesScreen(
                         color = ProcurementColors.Graphite700,
                         thickness = 1.dp
                     )
+                    }
                 }
             }
         }
