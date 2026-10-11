@@ -26,6 +26,9 @@ object CandidateClustering {
         return GroupKey(normalizedItem, normalizedUnit, scope.orEmpty(), currency.orEmpty().uppercase(Locale.ROOT))
     }
 
+    /** Counts distinct extracted numeric rates, not independent offers or approved prices. */
+    fun rateVariantCount(rows: List<RateCandidateRow>): Int = rows.map { it.rate }.distinct().size
+
     /** Search results expose matching evidence without a second tap. */
     fun showSources(query: String, manuallyExpanded: Boolean): Boolean =
         query.isNotBlank() || manuallyExpanded

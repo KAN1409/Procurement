@@ -47,5 +47,6 @@ class CandidateClusteringTest {
         assertEquals(setOf(800.0, 900.0), grouped.single().candidates.map { it.rate }.toSet())
         assertEquals(setOf(1L, 2L), grouped.single().candidates.map { it.id }.toSet())
         assertEquals(listOf(6.75, 6.75), grouped.single().candidates.map { it.quantity })
+        assertEquals(2, CandidateClustering.rateVariantCount(grouped.single().candidates))
     }
 }

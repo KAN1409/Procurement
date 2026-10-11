@@ -159,7 +159,7 @@ fun RateCandidatesScreen(
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                "${rows.size} extractions · ${distinctFiles} files · ${cluster.key.unit} · ${cluster.key.scope}",
+                                "${rows.size} extractions · ${distinctFiles} files · ${CandidateClustering.rateVariantCount(rows)} rate values · ${cluster.key.unit} · ${cluster.key.scope}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = ProcurementColors.TextSecondary
                             )
@@ -169,7 +169,7 @@ fun RateCandidatesScreen(
                                 color = ProcurementColors.AccentRedBright
                             )
                             Text(
-                                "Related extractions, not approved or necessarily comparable.",
+                                "Repeated values may be copied across files; not independent bids, approved prices, or necessarily comparable.",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = ProcurementColors.TextTertiary
                             )
