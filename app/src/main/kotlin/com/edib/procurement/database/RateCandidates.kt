@@ -150,6 +150,8 @@ interface RateCandidateDao {
         FROM rate_candidate c
         LEFT JOIN document d ON d.id = c.sourceDocumentId
         WHERE c.status = 'PENDING'
+          AND (:scope = '' OR COALESCE(c.inferredScope, '') = :scope)
+          AND (:minConfidence = 0 OR c.confidence >= :minConfidence)
           AND (
               :query = ''
               OR c.itemRaw LIKE '%' || :query || '%'
@@ -157,10 +159,14 @@ interface RateCandidateDao {
               OR c.sourceFileNameSnapshot LIKE '%' || :query || '%'
               OR c.unitRaw LIKE '%' || :query || '%'
           )
-        ORDER BY c.confidence DESC, c.id DESC
+        ORDER BY
+            CASE WHEN :sort = 'RATE_ASC' THEN c.rate END ASC,
+            CASE WHEN :sort = 'RATE_DESC' THEN c.rate END DESC,
+            CASE WHEN :sort = 'SOURCE' THEN c.sourceRelativePathSnapshot END COLLATE NOCASE ASC,
+            c.confidence DESC, c.id ASC
         """
     )
-    fun pendingFlow(query: String): Flow<List<RateCandidateRow>>
+    fun pendingFlow(query: String, scope: String = "", minConfidence: Int = 0, sort: String = "CONFIDENCE"): Flow<List<RateCandidateRow>>
 
     @Query(
         """

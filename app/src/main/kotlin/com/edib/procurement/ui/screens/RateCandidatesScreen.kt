@@ -48,6 +48,9 @@ fun RateCandidatesScreen(
     val candidates by vm.rateCandidates.collectAsStateWithLifecycle()
     val pendingCount by vm.rateCandidateCount.collectAsStateWithLifecycle()
     val scan by vm.rateCandidateScan.collectAsStateWithLifecycle()
+    val scope by vm.candidateScope.collectAsStateWithLifecycle()
+    val confidence by vm.candidateMinConfidence.collectAsStateWithLifecycle()
+    val sort by vm.candidateSort.collectAsStateWithLifecycle()
     val clusters = remember(candidates) { CandidateClustering.group(candidates) }
     val expanded = remember { mutableStateMapOf<String, Boolean>() }
 
@@ -78,6 +81,33 @@ fun RateCandidatesScreen(
                 placeholder = "Search candidate item, evidence or source…",
                 modifier = Modifier.fillMaxWidth()
             )
+            Spacer(Modifier.height(7.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                TextButton(onClick = { vm.setCandidateScope(if (scope == "SUPPLY") "" else "SUPPLY") }) {
+                    Text(if (scope == "SUPPLY") "✓ SUPPLY" else "SUPPLY")
+                }
+                TextButton(onClick = { vm.setCandidateScope(if (scope == "INSTALL") "" else "INSTALL") }) {
+                    Text(if (scope == "INSTALL") "✓ INSTALL" else "INSTALL")
+                }
+                TextButton(onClick = { vm.setCandidateScope(if (scope == "SUPPLY_INSTALL") "" else "SUPPLY_INSTALL") }) {
+                    Text(if (scope == "SUPPLY_INSTALL") "✓ BOTH" else "BOTH")
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                TextButton(onClick = { vm.setCandidateMinConfidence(if (confidence == 0) 80 else 0) }) {
+                    Text(if (confidence == 0) "ALL CONFIDENCE" else "≥80% ONLY")
+                }
+                TextButton(onClick = {
+                    vm.setCandidateSort(when (sort) {
+                        "CONFIDENCE" -> "RATE_ASC"
+                        "RATE_ASC" -> "RATE_DESC"
+                        "RATE_DESC" -> "SOURCE"
+                        else -> "CONFIDENCE"
+                    })
+                }) {
+                    Text("SORT: $sort")
+                }
+            }
             Spacer(Modifier.height(7.dp))
             Row(
                 Modifier.fillMaxWidth(),

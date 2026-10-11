@@ -108,6 +108,13 @@ class ProcurementViewModel(app: Application) : AndroidViewModel(app) {
     private val _rateCandidateQuery = MutableStateFlow("")
     val rateCandidateQuery: StateFlow<String> = _rateCandidateQuery.asStateFlow()
 
+    private val _candidateScope = MutableStateFlow("")
+    val candidateScope: StateFlow<String> = _candidateScope.asStateFlow()
+    private val _candidateMinConfidence = MutableStateFlow(0)
+    val candidateMinConfidence: StateFlow<Int> = _candidateMinConfidence.asStateFlow()
+    private val _candidateSort = MutableStateFlow("CONFIDENCE")
+    val candidateSort: StateFlow<String> = _candidateSort.asStateFlow()
+
     private val _rateCandidateScan = MutableStateFlow(RateCandidateScanProgress())
     val rateCandidateScan: StateFlow<RateCandidateScanProgress> = _rateCandidateScan.asStateFlow()
 
@@ -170,7 +177,9 @@ class ProcurementViewModel(app: Application) : AndroidViewModel(app) {
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val rateCandidates: StateFlow<List<RateCandidateRow>> =
-        _rateCandidateQuery.flatMapLatest { q -> repo.rateCandidates(q) }
+        kotlinx.coroutines.flow.combine(_rateCandidateQuery, _candidateScope, _candidateMinConfidence, _candidateSort) { q, scope, min, sort ->
+            arrayOf(q, scope, min.toString(), sort)
+        }.flatMapLatest { params -> repo.rateCandidates(params[0], params[1], params[2].toInt(), params[3]) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val rateCandidateCount: StateFlow<Int> = repo.rateCandidateCount()
@@ -233,6 +242,9 @@ fun setRateCheckChoiceQuery(q: String) { _rateCheckChoiceQuery.value = q }
 fun setRateFindQuery(q: String) { _rateFindQuery.value = q }
 
 fun setRateCandidateQuery(q: String) { _rateCandidateQuery.value = q }
+fun setCandidateScope(scope: String) { _candidateScope.value = scope }
+fun setCandidateMinConfidence(value: Int) { _candidateMinConfidence.value = value }
+fun setCandidateSort(value: String) { _candidateSort.value = value }
 
     fun clearMessage() { _message.value = null }
 

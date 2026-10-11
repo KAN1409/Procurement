@@ -439,8 +439,8 @@ fun homeCounts(): Flow<HomeCounts> {
     fun rateCheckChoices(query: String): Flow<List<RateListRow>> =
         rateDao.awardedChoices(query.trim())
 
-    fun rateCandidates(query: String): Flow<List<RateCandidateRow>> =
-        rateCandidateDao.pendingFlow(query.trim())
+    fun rateCandidates(query: String, scope: String = "", minConfidence: Int = 0, sort: String = "CONFIDENCE"): Flow<List<RateCandidateRow>> =
+        rateCandidateDao.pendingFlow(query.trim(), scope, minConfidence, sort)
 
     fun rateCandidateCount(): Flow<Int> = rateCandidateDao.pendingCountFlow()
 
