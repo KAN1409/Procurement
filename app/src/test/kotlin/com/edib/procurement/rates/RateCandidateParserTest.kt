@@ -72,6 +72,17 @@ class RateCandidateParserTest {
         assertEquals(800.0, rows[1].rate, 0.0)
     }
 
+    @Test
+    fun measuredGypsumDescriptionReconstructsMainItemWithoutCommercialNumbers() {
+        val fragment = "الإكسسوارات من إنتاج كناوف او جودين ميتال بسمك لا يقل عن 0.5 مم"
+        val evidence = "بالمتر المسطح - توريد وتركيب أسقف معلقة من ألواح الجبس الأخضر المقاوم للرطوبة بسمك 12 مم لزوم الحمام طبقاً للتشكيلات المطلوبة والسعر يشمل توريد وتركيب جميع " + fragment + " م2 720 740 532,800.00"
+        val reconstructed = RateCandidateParser.reconstructMeasuredItem(evidence, fragment)
+        assertTrue("Main BOQ identity must survive", reconstructed?.contains("أسقف معلقة") == true)
+        assertTrue("Accessories must remain as specification", reconstructed?.contains(fragment) == true)
+        assertTrue("Rate must not enter item", reconstructed?.contains("532,800") == false)
+        assertEquals(null, RateCandidateParser.reconstructMeasuredItem("ملاحظات أخرى " + fragment + " م2 720 740 532,800.00", fragment))
+    }
+
     private fun source(text: String) = RateCorpusDocument(
         id = 7L,
         displayName = "source.xlsx",
