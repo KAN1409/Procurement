@@ -114,6 +114,12 @@ interface RateCandidateDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(rows: List<RateCandidateEntity>): List<Long>
 
+    @Query("""
+        UPDATE rate_candidate SET status = 'STALE'
+        WHERE status = 'PENDING' AND parserVersion <> :currentVersion
+    """)
+    suspend fun markSupersededPendingStale(currentVersion: String)
+
     @Query("SELECT COUNT(*) FROM rate_candidate WHERE status = 'PENDING'")
     fun pendingCountFlow(): Flow<Int>
 

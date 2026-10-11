@@ -8,7 +8,7 @@ import java.security.MessageDigest
 import java.util.Locale
 
 object RateCandidateParser {
-    const val PARSER_VERSION = "rate-candidate-1.1"
+    const val PARSER_VERSION = "rate-candidate-1.2"
     private const val MAX_CANDIDATES_PER_DOCUMENT = 500
 
     data class HeaderMap(
@@ -108,6 +108,11 @@ object RateCandidateParser {
         now: Long
     ): RateCandidateEntity? {
         if (evidence.length < 6 || evidence.length > 700) return null
+        if (evidence.contains("[excel-serial:", ignoreCase = true) ||
+            evidence.contains('\\') ||
+            evidence.trimStart().startsWith("المشروع") ||
+            evidence.trimStart().startsWith("project:", ignoreCase = true)
+        ) return null
         val unit = detectUnit(evidence)
         val currency = detectCurrency(evidence)
         if (unit == null && currency == null) return null
@@ -171,6 +176,7 @@ object RateCandidateParser {
         }
         val sourceKey = sha256(
             listOf(
+                PARSER_VERSION,
                 document.id.toString(),
                 document.lastModified.toString(),
                 locator,
