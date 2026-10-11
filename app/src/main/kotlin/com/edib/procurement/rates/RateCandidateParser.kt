@@ -161,17 +161,17 @@ object RateCandidateParser {
     }
 
     internal fun reconstructMeasuredItem(evidence: String, fragment: String): String? {
-        val row = evidence.trim().replace(Regex("\\s+"), " ")
-        val fragmentText = fragment.trim().replace(Regex("\\s+"), " ")
+        val row = evidence.trim().replace(Regex("\s+"), " ")
+        val fragmentText = fragment.trim().replace(Regex("\s+"), " ")
         if (fragmentText.length < 12 || !row.contains(fragmentText)) return null
-        if (!Regex("""^(?:بالمتر\\s+(?:المسطح|الطولي|المكعب)|بالعدد|بالمقطوعية)\\s*[-:]?\\s*""").containsMatchIn(row)) return null
+        if (!Regex("""^(?:بالمتر\s+(?:المسطح|الطولي|المكعب)|بالعدد|بالمقطوعية)\s*[-:]?\s*""").containsMatchIn(row)) return null
         val start = row.indexOf(fragmentText)
         if (start <= 60 || !row.substring(0, start).contains("توريد") && !row.substring(0, start).contains("تركيب")) return null
         val end = start + fragmentText.length
         val after = row.substring(end).trim()
         // Require an unmistakable commercial numeric suffix. Never swallow
         // quantity, rate, or amount into the item description.
-        if (!Regex("""^(?:(?:م\\s*[2٢²]|m2|م\\s*ط|lm|عدد|each)\\s+)?[0-9٠-٩۰-۹]+(?:[,.٬٫][0-9٠-٩۰-۹]+)?\\s+[0-9٠-٩۰-۹]+(?:[,.٬٫][0-9٠-٩۰-۹]+)?(?:\\s+[0-9٠-٩۰-۹]+(?:[,.٬٫][0-9٠-٩۰-۹]+)?)?\\s*$""").matches(after)) return null
+        if (!Regex("""^(?:(?:م\s*[2٢²]|m2|م\s*ط|lm|عدد|each)\s+)?[0-9٠-٩۰-۹]+(?:[,.٬٫][0-9٠-٩۰-۹]+)?\s+[0-9٠-٩۰-۹]+(?:[,.٬٫][0-9٠-٩۰-۹]+)?(?:\s+[0-9٠-٩۰-۹]+(?:[,.٬٫][0-9٠-٩۰-۹]+)?)?\s*$""").matches(after)) return null
         return row.substring(0, end).trim().takeIf { it.length > fragmentText.length + 60 }
     }
 
