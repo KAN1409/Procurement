@@ -21,6 +21,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
@@ -47,6 +49,7 @@ fun RateCandidatesScreen(
     val pendingCount by vm.rateCandidateCount.collectAsStateWithLifecycle()
     val scan by vm.rateCandidateScan.collectAsStateWithLifecycle()
     val clusters = CandidateClustering.group(candidates)
+    val expanded = remember { mutableStateMapOf<String, Boolean>() }
 
     Column(
         Modifier
@@ -137,30 +140,58 @@ fun RateCandidatesScreen(
                 )
             ) {
                 clusters.forEach { cluster ->
-                    if (cluster.candidates.size > 1) {
-                        item(key = "cluster:" + cluster.key.toString()) {
+                    val groupId = cluster.key.toString()
+                    item(key = "cluster:" + groupId) {
+                        val rows = cluster.candidates
+                        val distinctFiles = rows.map {
+                            it.sourceDocumentId?.toString()
+                                ?: it.sourceUri.ifBlank { it.sourceRelativePath }
+                        }.distinct().size
+                        val low = rows.minOf { it.rate }
+                        val high = rows.maxOf { it.rate }
+                        Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
                             Text(
-                                "SIMILAR ITEMS · ${cluster.candidates.size} candidates · ${cluster.key.unit}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = ProcurementColors.TextSecondary,
-                                modifier = Modifier.padding(vertical = 8.dp)
+                                rows.first().itemRaw,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = ProcurementColors.TextPrimary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
                             )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "${rows.size} extractions · ${distinctFiles} files · ${cluster.key.unit} · ${cluster.key.scope}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = ProcurementColors.TextSecondary
+                            )
+                            Text(
+                                "Unverified range: ${MONEY.format(low)}–${MONEY.format(high)} ${cluster.key.currency} / ${cluster.key.unit}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = ProcurementColors.AccentRedBright
+                            )
+                            Text(
+                                "Related extractions, not approved or necessarily comparable.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = ProcurementColors.TextTertiary
+                            )
+                            TextButton(onClick = { expanded[groupId] = expanded[groupId] != true }) {
+                                Text(if (expanded[groupId] == true) "HIDE SOURCES" else "SHOW SOURCES")
+                            }
                         }
+                        HorizontalDivider(color = ProcurementColors.Graphite700)
                     }
-                    items(cluster.candidates, key = { it.id }) { candidate ->
-                    CandidateRow(
-                        vm = vm,
-                        candidate = candidate,
-                        onReview = {
-                            vm.selectRateCandidate(candidate)
-                            onReviewCandidate()
-                        },
-                        onDismiss = { vm.dismissRateCandidate(candidate.id) }
-                    )
-                    HorizontalDivider(
-                        color = ProcurementColors.Graphite700,
-                        thickness = 1.dp
-                    )
+                    if (expanded[groupId] == true) {
+                        items(cluster.candidates, key = { it.id }) { candidate ->
+                            CandidateRow(
+                                vm = vm,
+                                candidate = candidate,
+                                onReview = {
+                                    vm.selectRateCandidate(candidate)
+                                    onReviewCandidate()
+                                },
+                                onDismiss = { vm.dismissRateCandidate(candidate.id) }
+                            )
+                            HorizontalDivider(color = ProcurementColors.Graphite700)
+                        }
                     }
                 }
             }
