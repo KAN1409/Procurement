@@ -1313,10 +1313,9 @@ fun AddRateScreen(
 
                         localError = when {
                             candidate?.let { c ->
-                                item.trim() == c.itemRaw.trim() &&
-                                    c.evidenceText.trim().length > c.itemRaw.trim().length + 60 &&
-                                    c.evidenceText.contains(c.itemRaw.trim()) &&
-                                    !c.evidenceText.trimStart().startsWith(c.itemRaw.trim())
+                                com.edib.procurement.rates.CandidateIdentityGuard.blocksUnchangedItem(
+                                    item, c.itemRaw, c.evidenceText
+                                )
                             } == true ->
                                 "Item may be a trailing specification, not the main BOQ item. Verify and correct the description against the source before saving."
                             item.isBlank() -> "Item description is required."
