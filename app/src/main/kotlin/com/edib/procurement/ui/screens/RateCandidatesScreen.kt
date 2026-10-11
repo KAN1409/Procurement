@@ -248,6 +248,16 @@ private fun CandidateRow(
             }
         }
 
+        Spacer(Modifier.height(5.dp))
+        Text(
+            "Quantity: ${candidate.quantity?.let { MONEY.format(it) } ?: "needs review"} · " +
+                "Unit: ${candidate.unitRaw ?: "needs review"} · " +
+                "Scope: ${candidate.inferredScope ?: "needs review"}",
+            style = MaterialTheme.typography.labelSmall,
+            color = ProcurementColors.TextPrimary,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
         Spacer(Modifier.height(7.dp))
         Text(
             candidate.evidenceText,
