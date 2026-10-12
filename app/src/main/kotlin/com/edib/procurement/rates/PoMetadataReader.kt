@@ -16,6 +16,7 @@ object PoMetadataReader {
     private val arabicOrder = Regex("""(?:أمر|امر)\s*(?:توريد|إسناد|اسناد)\s*/?\s*(?:رقم)?\s*[/#:() ]*\s*(?:B\s*)?\(?\s*([A-Z0-9]+(?:-[A-Z0-9]+){2,})\s*\)?""", RegexOption.IGNORE_CASE)
     private val issueMonthYearDay = Regex("""(?:تحرير[اًاً]*\s*ف[يى]|تحرير\s*في)\s*[:：]?\s*([0-9٠-٩۰-۹]{1,2})/([0-9٠-٩۰-۹]{4})/\s*([0-9٠-٩۰-۹]{1,2})""")
     private val issueWords = Regex("""(?:تحرير[اًاً]*\s*ف[يى]|تحرير\s*في)\s*[:：]?\s*([0-9٠-٩۰-۹]{1,2})\s+(يناير|فبراير|مارس|أبريل|ابريل|مايو|يونيو|يوليو|أغسطس|اغسطس|سبتمبر|أكتوبر|اكتوبر|نوفمبر|ديسمبر)\s+([0-9٠-٩۰-۹]{4})""")
+    private val reverseWordDate = Regex("""([0-9٠-٩۰-۹]{1,2})\\s+(يناير|فبراير|مارس|أبريل|ابريل|مايو|يونيو|يوليو|أغسطس|اغسطس|سبتمبر|أكتوبر|اكتوبر|نوفمبر|ديسمبر)\\s+([0-9٠-٩۰-۹]{4})\\s+تحرير[اًاً]*\\s*ف[يى]""")
     private val headerPoCode = Regex("""(?i)\b(MMH[0-9]+-[A-Z]{2}-AR-[0-9]+-[0-9]{2}[A-Z]?)\b""")
     private val formats = listOf("uuuu-M-d", "d-M-uuuu", "d/M/uuuu", "uuuu/M/d", "d.M.uuuu", "uuuu.M.d")
         .map { DateTimeFormatter.ofPattern(it).withResolverStyle(ResolverStyle.STRICT) }
@@ -50,7 +51,7 @@ object PoMetadataReader {
             val day = latin(m.groupValues[3]).toIntOrNull()
             if (month == null || year == null || day == null) null
             else runCatching { LocalDate.of(year, month, day) }.getOrNull()?.let { it to m.value }
-        }.toList() + issueWords.findAll(heading).mapNotNull { m ->
+        }.toList() + (issueWords.findAll(heading) + reverseWordDate.findAll(heading)).mapNotNull { m ->
             val month = mapOf("يناير" to 1, "فبراير" to 2, "مارس" to 3,
                 "أبريل" to 4, "ابريل" to 4, "مايو" to 5, "يونيو" to 6,
                 "يوليو" to 7, "أغسطس" to 8, "اغسطس" to 8, "سبتمبر" to 9,
