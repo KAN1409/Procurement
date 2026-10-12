@@ -18,6 +18,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -1115,10 +1117,10 @@ fun AddRateScreen(
             }
             RateField("Specification", specification) { specification = it }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                RateField(
-                    label = "Unit *",
+                UnitDropdown(
                     value = unit,
-                    onValueChange = { unit = it },
+                    extractedValue = candidate?.unitRaw,
+                    onSelect = { unit = it },
                     modifier = Modifier.weight(1f)
                 )
                 RateField(
@@ -1401,6 +1403,53 @@ private fun RateField(
             .fillMaxWidth()
             .padding(bottom = 7.dp)
     )
+}
+
+private val COMMERCIAL_UNITS = listOf(
+    "م.ط" to "متر طولي", "م٢" to "متر مسطح",
+    "عدد" to "بالعدد", "مقطوعية" to "Lump sum",
+    "م³" to "متر مكعب", "كجم" to "كيلوجرام",
+    "طن" to "طن", "طقم" to "Set", "نقطة" to "Point",
+    "لفة" to "Roll", "لوح" to "Sheet / Slab", "متر" to "Meter"
+)
+
+@Composable
+private fun UnitDropdown(
+    value: String,
+    extractedValue: String?,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(modifier) {
+        Text("Unit *", style = MaterialTheme.typography.labelSmall,
+            color = ProcurementColors.TextSecondary)
+        Box {
+            OutlinedButton(
+                onClick = { expanded = true },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text((value.takeIf { selected -> COMMERCIAL_UNITS.any { it.first == selected } }
+                    ?: "Needs Review") + " ▾", maxLines = 1)
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                DropdownMenuItem(text = { Text("Needs Review — select a unit") }, onClick = {
+                    onSelect("")
+                    expanded = false
+                })
+                COMMERCIAL_UNITS.forEach { (code, label) ->
+                    DropdownMenuItem(text = { Text("$code — $label") }, onClick = {
+                        onSelect(code)
+                        expanded = false
+                    })
+                }
+            }
+        }
+        if (!extractedValue.isNullOrBlank()) {
+            Text("Extracted: $extractedValue", style = MaterialTheme.typography.labelSmall,
+                color = ProcurementColors.TextTertiary, maxLines = 2)
+        }
+    }
 }
 
 @Composable
