@@ -54,6 +54,27 @@ class PoMetadataReaderTest {
         assertEquals(LocalDate.of(2025, 12, 1), result.date)
     }
 
+    @Test fun realReorderedArabicDateAndInstallationOrder() {
+        val result = PoMetadataReader.extract(source("أمر تركيب / B رقم (MMH2-GR-AR-0238-26)\\nتحريرا في 07/2026/ 6 :"))
+        assertEquals("MMH2-GR-AR-0238-26", result.number)
+        assertEquals(LocalDate.of(2026, 7, 6), result.date)
+    }
+
+    @Test fun realJuneOrdersAreDistinctFromJulyRevision() {
+        val result = PoMetadataReader.extract(source("أمر توريد / A رقم (MMH2-GR-AR-0238-26)\\nتحريرا في 06/2026/ 4 :"))
+        assertEquals(LocalDate.of(2026, 6, 4), result.date)
+    }
+
+    @Test fun realFebruaryOrderHandlesReversedDateRendering() {
+        val result = PoMetadataReader.extract(source("أمر توريد / رقم (MMH2-GR-AR-0131-26)\\nتحريرا في 02/2026/ 12 :"))
+        assertEquals(LocalDate.of(2026, 2, 12), result.date)
+    }
+
+    @Test fun wordMonthDateFromNewDocx() {
+        val result = PoMetadataReader.extract(source("16 يونيو 2025 تحريرًا في MMH2-GR-AR-0029-25a أمر توريد رقم"))
+        assertEquals("MMH2-GR-AR-0029-25a", result.number)
+    }
+
     @Test fun invalidCalendarDatesAreRejected() {
         val result = PoMetadataReader.extract(source("PO Date: 31/02/2026"))
         assertNull(result.date)
