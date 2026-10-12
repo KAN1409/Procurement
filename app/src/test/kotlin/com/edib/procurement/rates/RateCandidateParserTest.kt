@@ -83,6 +83,19 @@ class RateCandidateParserTest {
         assertEquals(null, RateCandidateParser.reconstructMeasuredItem("ملاحظات أخرى " + fragment + " م2 720 740 532,800.00", fragment))
     }
 
+    @Test
+    fun mappedReferenceCodeCannotMasqueradeAsUnit() {
+        val doc = source("""
+            البند\tالوحدة\tسعر الوحدة
+            بالعدد توريد قرصة رخام جلالة دائرية\t(ALMBT-UN-FU-0049-26)\t1
+        """.trimIndent().replace("\\t", "\t"))
+        val rows = RateCandidateParser.parse(doc, 1234L)
+        assertTrue("Invalid PO reference must never produce a mapped unit/rate", rows.isEmpty())
+        assertTrue(RateCandidateParser.suspiciousUnit("(ALMBT-UN-FU-0049-26)"))
+        assertTrue(!RateCandidateParser.suspiciousUnit("م٢"))
+        assertTrue(!RateCandidateParser.suspiciousUnit("عدد"))
+    }
+
     private fun source(text: String) = RateCorpusDocument(
         id = 7L,
         displayName = "source.xlsx",

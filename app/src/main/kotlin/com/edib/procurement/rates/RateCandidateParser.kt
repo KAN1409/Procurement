@@ -71,6 +71,9 @@ object RateCandidateParser {
             ?: return null
 
         val unitRaw = map.unit?.let { cells.getOrNull(it) }?.takeIf { it.isNotBlank() }
+        // A mapped unit must be a recognised measurement, never a PO reference.
+        // Do not turn malformed commercial rows into trusted-looking candidates.
+        if (unitRaw != null && detectUnit(unitRaw) == null) return null
         val quantity = map.quantity?.let { cells.getOrNull(it) }?.let(::extractFirstNumber)
         val currency = map.currency?.let { cells.getOrNull(it) }?.let(::detectCurrency)
             ?: detectCurrency(evidence)
@@ -354,6 +357,10 @@ object RateCandidateParser {
 
     private fun plausibleRate(value: Double): Boolean =
         value.isFinite() && value > 0.0 && value <= 1_000_000_000.0
+
+    /** Read-only sanity check shared with review UI for previously indexed rows. */
+    fun suspiciousUnit(unit: String?): Boolean =
+        !unit.isNullOrBlank() && detectUnit(unit) == null
 
     private fun detectUnit(value: String): String? {
         val normalized = normalizeCommercialDigits(value).lowercase(Locale.ROOT)

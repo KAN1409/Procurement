@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.edib.procurement.database.RateCandidateRow
 import com.edib.procurement.rates.CandidateClustering
+import com.edib.procurement.rates.RateCandidateParser
 import com.edib.procurement.ui.ProcurementViewModel
 import com.edib.procurement.ui.components.Chip
 import com.edib.procurement.ui.components.EmptyState
@@ -321,6 +322,14 @@ private fun CandidateRow(
                     color = ProcurementColors.TextTertiary
                 )
             }
+        }
+
+        if (RateCandidateParser.suspiciousUnit(candidate.unitRaw)) {
+            Text(
+                "SUSPECT UNIT — PO/reference text may have been parsed as a unit. Verify the original document before using this rate.",
+                color = ProcurementColors.AccentRedBright,
+                style = MaterialTheme.typography.labelSmall
+            )
         }
 
         Spacer(Modifier.height(5.dp))
