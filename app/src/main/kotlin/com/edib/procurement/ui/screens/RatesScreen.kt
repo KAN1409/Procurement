@@ -1030,7 +1030,16 @@ fun AddRateScreen(
     LaunchedEffect(candidate?.id) {
         candidate?.let { c ->
             item = c.itemRaw
-            unit = c.unitRaw.orEmpty()
+            unit = when (c.unitRaw?.trim()?.lowercase()) {
+                "م.ط", "م ط", "lm", "متر طولي" -> "م.ط"
+                "م٢", "م2", "م²", "m2", "sqm", "متر مربع" -> "م٢"
+                "عدد", "بالعدد", "each", "no", "pcs" -> "عدد"
+                "مقطوعية", "مقطوعيه", "lot", "lump sum" -> "مقطوعية"
+                "م٣", "م3", "م³", "m3" -> "م³"
+                "كجم", "kg" -> "كجم"
+                "طن", "ton" -> "طن"
+                else -> c.unitRaw?.takeIf { raw -> COMMERCIAL_UNITS.any { it.first == raw } }.orEmpty()
+            }
             quantity = c.quantity?.let { MONEY.format(it).replace(",", "") }.orEmpty()
             rate = MONEY.format(c.rate).replace(",", "")
             // Never infer commercial currency or observation date from file metadata.
