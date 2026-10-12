@@ -240,6 +240,16 @@ fun RateCandidatesScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Spacer(Modifier.height(4.dp))
+                            if (sort == "PO_DATE_DESC" || sort == "PO_DATE_ASC") {
+                                val documentIds = rows.mapNotNull { it.sourceDocumentId }.distinct()
+                                val datedSources = documentIds.mapNotNull { poMetadata[it]?.date }.distinct()
+                                Text(
+                                    "PO date: " + if (datedSources.size == 1) datedSources.single().format(DateTimeFormatter.ISO_LOCAL_DATE)
+                                    else if (datedSources.isEmpty()) "Unknown" else "Multiple sources — see individual records",
+                                    color = ProcurementColors.TextPrimary,
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
                             Text(
                                 "${rows.size} extractions · ${distinctFiles} files · ${CandidateClustering.rateVariantCount(rows)} rate values · ${cluster.key.unit} · ${cluster.key.scope}",
                                 style = MaterialTheme.typography.labelSmall,
