@@ -156,8 +156,8 @@ interface RateCandidateDao {
               :query = ''
               OR REPLACE(c.itemRaw, 'ة', 'ه') LIKE '%' || REPLACE(:query, 'ة', 'ه') || '%'
               OR REPLACE(c.evidenceText, 'ة', 'ه') LIKE '%' || REPLACE(:query, 'ة', 'ه') || '%'
-              OR c.sourceFileNameSnapshot LIKE '%' || :query || '%'
-              OR c.unitRaw LIKE '%' || :query || '%'
+              OR REPLACE(c.sourceFileNameSnapshot, 'ة', 'ه') LIKE '%' || REPLACE(:query, 'ة', 'ه') || '%'
+              OR REPLACE(c.unitRaw, 'ة', 'ه') LIKE '%' || REPLACE(:query, 'ة', 'ه') || '%'
           )
         ORDER BY
             CASE WHEN :sort = 'RATE_ASC' THEN c.rate END ASC,
