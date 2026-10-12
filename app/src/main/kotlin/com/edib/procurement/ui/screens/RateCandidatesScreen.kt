@@ -62,9 +62,9 @@ fun RateCandidatesScreen(
     val datedCandidates = remember(candidates, sort, poMetadata) {
         if (sort == "PO_DATE_DESC" || sort == "PO_DATE_ASC") {
             val order = compareBy<RateCandidateRow> { row ->
-                poMetadata[row.sourceDocumentId]?.date == null
+                row.sourceDocumentId?.let(poMetadata::get)?.date == null
             }.thenBy { row ->
-                val day = poMetadata[row.sourceDocumentId]?.date?.toEpochDay() ?: 0L
+                val day = row.sourceDocumentId?.let(poMetadata::get)?.date?.toEpochDay() ?: 0L
                 if (sort == "PO_DATE_DESC") -day else day
             }.thenBy { it.id }
             candidates.sortedWith(order)
