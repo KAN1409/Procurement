@@ -265,7 +265,9 @@ fun RateCandidatesScreen(
                                 color = ProcurementColors.TextSecondary
                             )
                             Text(
-                                (if (cluster.candidates.any { RateCandidateParser.suspiciousUnit(it.unitRaw) || it.unitRaw.isNullOrBlank() })\n                                    "Unverified extracted values (unit needs review): ${MONEY.format(low)}–${MONEY.format(high)}"\n                                 else "Unverified range: ${MONEY.format(low)}–${MONEY.format(high)} ${cluster.key.currency} / ${cluster.key.unit}"),
+                                (if (cluster.candidates.any { RateCandidateParser.suspiciousUnit(it.unitRaw) || it.unitRaw.isNullOrBlank() })
+                                    "Unverified extracted values (unit needs review): ${MONEY.format(low)}–${MONEY.format(high)}"
+                                 else "Unverified range: ${MONEY.format(low)}–${MONEY.format(high)} ${cluster.key.currency} / ${cluster.key.unit}"),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = ProcurementColors.AccentRedBright
                             )
