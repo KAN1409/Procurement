@@ -73,7 +73,7 @@ object RateCandidateParser {
         val unitRaw = map.unit?.let { cells.getOrNull(it) }?.takeIf { it.isNotBlank() }
         // A mapped unit must be a recognised measurement, never a PO reference.
         // Do not turn malformed commercial rows into trusted-looking candidates.
-        if (unitRaw != null && detectUnit(unitRaw) == null) return null
+        if (unitRaw != null && !isStandaloneUnit(unitRaw)) return null
         val quantity = map.quantity?.let { cells.getOrNull(it) }?.let(::extractFirstNumber)
         val currency = map.currency?.let { cells.getOrNull(it) }?.let(::detectCurrency)
             ?: detectCurrency(evidence)
@@ -360,7 +360,12 @@ object RateCandidateParser {
 
     /** Read-only sanity check shared with review UI for previously indexed rows. */
     fun suspiciousUnit(unit: String?): Boolean =
-        !unit.isNullOrBlank() && detectUnit(unit) == null
+        !unit.isNullOrBlank() && !isStandaloneUnit(unit)
+
+    private fun isStandaloneUnit(raw: String): Boolean {
+        val cleaned = normalizeCommercialDigits(raw).trim()
+        return UNIT_REGEX.matchEntire(cleaned) != null
+    }
 
     private fun detectUnit(value: String): String? {
         val normalized = normalizeCommercialDigits(value).lowercase(Locale.ROOT)
