@@ -225,7 +225,8 @@ fun RateCandidatesScreen(
                 state = candidateListState,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(
                     horizontal = 14.dp,
-                    vertical = 104.dp
+                    top = 4.dp,
+                    bottom = 104.dp
                 )
             ) {
                 clusters.forEach { cluster ->
