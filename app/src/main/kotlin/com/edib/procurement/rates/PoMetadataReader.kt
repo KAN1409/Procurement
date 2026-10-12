@@ -9,7 +9,7 @@ import java.time.format.ResolverStyle
 data class PoMetadata(val number: String? = null, val date: LocalDate? = null, val evidence: String? = null)
 
 object PoMetadataReader {
-    private val dateLabel = Regex("""(?i)(?:\bpo\s*date\b|\bpurchase\s*order\s*date\b|تاريخ\s*(?:أمر\s*(?:الإسناد|الاسناد|التوريد|الشراء)|الـ?\s*po))\s*[:：-]?\s*(\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4})""")
+    private val dateLabel = Regex("""(?i)(?:\bpo\s*date\b|\bpurchase\s*order\s*date\b|تاريخ\s*(?:أمر\s*(?:الإسناد|الاسناد|التوريد|الشراء)|الـ?\s*po))\s*[:：-]?\s*([0-9٠-٩۰-۹]{1,4}[-/.][0-9٠-٩۰-۹]{1,2}[-/.][0-9٠-٩۰-۹]{1,4})""")
     private val numberLabel = Regex("""(?i)(?:\bpo\s*(?:no\.?|number|#)\b|رقم\s*أمر\s*(?:الإسناد|الاسناد|التوريد|الشراء))\s*[:：#-]?\s*([A-Z0-9][A-Z0-9/-]{3,})""")
     private val formats = listOf("uuuu-M-d", "d-M-uuuu", "d/M/uuuu", "uuuu/M/d", "d.M.uuuu", "uuuu.M.d")
         .map { DateTimeFormatter.ofPattern(it).withResolverStyle(ResolverStyle.STRICT) }
