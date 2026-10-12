@@ -442,6 +442,9 @@ fun homeCounts(): Flow<HomeCounts> {
     fun rateCandidates(query: String, scope: String = "", minConfidence: Int = 0, sort: String = "CONFIDENCE"): Flow<List<RateCandidateRow>> =
         rateCandidateDao.pendingFlow(query.trim(), scope, minConfidence, sort)
 
+    fun pendingPoSources(): Flow<List<com.edib.procurement.database.PoSourceText>> =
+        rateCandidateDao.pendingPoSourceTextFlow()
+
     fun rateCandidateCount(): Flow<Int> = rateCandidateDao.pendingCountFlow()
 
     suspend fun scanRateCandidates(

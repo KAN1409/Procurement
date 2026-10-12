@@ -96,6 +96,9 @@ data class RateCandidateRow(
     val confirmedRateId: Long?
 )
 
+/** Read-only metadata source; no candidate regeneration and no database migration. */
+data class PoSourceText(val id: Long, val extractedText: String)
+
 /** Indexed source text consumed read-only by the candidate scanner. */
 data class RateCorpusDocument(
     val id: Long,
@@ -119,6 +122,13 @@ interface RateCandidateDao {
         WHERE status = 'PENDING' AND parserVersion <> :currentVersion
     """)
     suspend fun markSupersededPendingStale(currentVersion: String)
+
+    @Query("""
+        SELECT d.id AS id, d.extractedText AS extractedText FROM document d
+        WHERE d.id IN (SELECT DISTINCT sourceDocumentId FROM rate_candidate WHERE status = 'PENDING')
+          AND d.isMissing = 0 AND d.contentState = 'INDEXED'
+    """)
+    fun pendingPoSourceTextFlow(): Flow<List<PoSourceText>>
 
     @Query("SELECT COUNT(*) FROM rate_candidate WHERE status = 'PENDING'")
     fun pendingCountFlow(): Flow<Int>

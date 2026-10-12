@@ -36,6 +36,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.edib.procurement.database.RateCandidateRow
 import com.edib.procurement.rates.CandidateClustering
 import com.edib.procurement.rates.RateCandidateParser
+import com.edib.procurement.rates.PoMetadata
+import java.time.format.DateTimeFormatter
 import com.edib.procurement.ui.ProcurementViewModel
 import com.edib.procurement.ui.components.Chip
 import com.edib.procurement.ui.components.EmptyState
@@ -56,7 +58,19 @@ fun RateCandidatesScreen(
     val scope by vm.candidateScope.collectAsStateWithLifecycle()
     val confidence by vm.candidateMinConfidence.collectAsStateWithLifecycle()
     val sort by vm.candidateSort.collectAsStateWithLifecycle()
-    val clusters = remember(candidates, sort) { CandidateClustering.group(candidates, sort) }
+    val poMetadata by vm.candidatePoMetadata.collectAsStateWithLifecycle()
+    val datedCandidates = remember(candidates, sort, poMetadata) {
+        if (sort == "PO_DATE_DESC" || sort == "PO_DATE_ASC") {
+            val order = compareBy<RateCandidateRow> { row ->
+                poMetadata[row.sourceDocumentId]?.date == null
+            }.thenBy { row ->
+                val day = poMetadata[row.sourceDocumentId]?.date?.toEpochDay() ?: 0L
+                if (sort == "PO_DATE_DESC") -day else day
+            }.thenBy { it.id }
+            candidates.sortedWith(order)
+        } else candidates
+    }
+    val clusters = remember(datedCandidates, sort) { CandidateClustering.group(datedCandidates, sort) }
     val expanded = remember { mutableStateMapOf<String, Boolean>() }
     var sortMenuOpen by remember { mutableStateOf(false) }
 
@@ -109,6 +123,8 @@ fun RateCandidatesScreen(
                             "RATE_ASC" -> "RATE ↑"
                             "RATE_DESC" -> "RATE ↓"
                             "SOURCE" -> "SOURCE"
+                            "PO_DATE_DESC" -> "NEWEST PO"
+                            "PO_DATE_ASC" -> "OLDEST PO"
                             else -> "CONFIDENCE"
                         })
                     }
@@ -117,7 +133,9 @@ fun RateCandidatesScreen(
                             "CONFIDENCE" to "Confidence",
                             "RATE_ASC" to "Rate: low to high",
                             "RATE_DESC" to "Rate: high to low",
-                            "SOURCE" to "Source document"
+                            "SOURCE" to "Source document",
+                            "PO_DATE_DESC" to "PO date: newest first",
+                            "PO_DATE_ASC" to "PO date: oldest first"
                         ).forEach { (value, label) ->
                             DropdownMenuItem(text = { Text(label) }, onClick = {
                                 vm.setCandidateSort(value)
@@ -260,6 +278,7 @@ fun RateCandidatesScreen(
                             CandidateRow(
                                 vm = vm,
                                 candidate = candidate,
+                                poMetadata = candidate.sourceDocumentId?.let(poMetadata::get),
                                 onReview = {
                                     vm.selectRateCandidate(candidate)
                                     onReviewCandidate()
@@ -279,6 +298,7 @@ fun RateCandidatesScreen(
 private fun CandidateRow(
     vm: ProcurementViewModel,
     candidate: RateCandidateRow,
+    poMetadata: PoMetadata?,
     onReview: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -351,6 +371,18 @@ private fun CandidateRow(
             overflow = TextOverflow.Ellipsis
         )
         Spacer(Modifier.height(4.dp))
+        Text(
+            "PO Date: " + (poMetadata?.date?.format(DateTimeFormatter.ISO_LOCAL_DATE) ?: "Unknown") +
+                " · PO Number: " + (poMetadata?.number ?: "Unknown"),
+            style = MaterialTheme.typography.labelSmall,
+            color = ProcurementColors.TextPrimary
+        )
+        Text(
+            poMetadata?.evidence?.let { "Date source: document heading · $it" }
+                ?: "PO date not verified from document heading",
+            style = MaterialTheme.typography.labelSmall,
+            color = ProcurementColors.TextTertiary
+        )
         Text(
             "${candidate.sourceFileName} · ${candidate.evidenceLocator} · #${candidate.id}",
             style = MaterialTheme.typography.labelSmall,

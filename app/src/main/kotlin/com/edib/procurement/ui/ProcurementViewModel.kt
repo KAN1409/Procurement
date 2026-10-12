@@ -22,6 +22,10 @@ import com.edib.procurement.database.RateDraft
 import com.edib.procurement.database.RateListRow
 import com.edib.procurement.database.RateSourceChoice
 import com.edib.procurement.rates.RateCandidateScanProgress
+import com.edib.procurement.rates.PoMetadata
+import com.edib.procurement.rates.PoMetadataReader
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import com.edib.procurement.rates.RateCheckRequest
 import com.edib.procurement.rates.RateCheckResult
 import com.edib.procurement.database.UnlinkedDocumentRow
@@ -181,6 +185,10 @@ class ProcurementViewModel(app: Application) : AndroidViewModel(app) {
             arrayOf(q, scope, min.toString(), sort)
         }.flatMapLatest { params -> repo.rateCandidates(params[0], params[1], params[2].toInt(), params[3]) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val candidatePoMetadata: StateFlow<Map<Long, PoMetadata>> = repo.pendingPoSources()
+        .map { sources -> sources.associate { it.id to PoMetadataReader.extract(it) } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     val rateCandidateCount: StateFlow<Int> = repo.rateCandidateCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
