@@ -154,8 +154,8 @@ interface RateCandidateDao {
           AND (:minConfidence = 0 OR c.confidence >= :minConfidence)
           AND (
               :query = ''
-              OR c.itemRaw LIKE '%' || :query || '%'
-              OR c.evidenceText LIKE '%' || :query || '%'
+              OR REPLACE(c.itemRaw, 'ة', 'ه') LIKE '%' || REPLACE(:query, 'ة', 'ه') || '%'
+              OR REPLACE(c.evidenceText, 'ة', 'ه') LIKE '%' || REPLACE(:query, 'ة', 'ه') || '%'
               OR c.sourceFileNameSnapshot LIKE '%' || :query || '%'
               OR c.unitRaw LIKE '%' || :query || '%'
           )

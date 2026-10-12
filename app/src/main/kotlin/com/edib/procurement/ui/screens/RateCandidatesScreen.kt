@@ -14,6 +14,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -23,6 +25,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
@@ -53,6 +57,7 @@ fun RateCandidatesScreen(
     val sort by vm.candidateSort.collectAsStateWithLifecycle()
     val clusters = remember(candidates, sort) { CandidateClustering.group(candidates, sort) }
     val expanded = remember { mutableStateMapOf<String, Boolean>() }
+    var sortMenuOpen by remember { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -97,16 +102,36 @@ fun RateCandidatesScreen(
                 TextButton(onClick = { vm.setCandidateMinConfidence(if (confidence == 0) 80 else 0) }) {
                     Text(if (confidence == 0) "ALL CONFIDENCE" else "≥80% ONLY")
                 }
-                TextButton(onClick = {
-                    vm.setCandidateSort(when (sort) {
-                        "CONFIDENCE" -> "RATE_ASC"
-                        "RATE_ASC" -> "RATE_DESC"
-                        "RATE_DESC" -> "SOURCE"
-                        else -> "CONFIDENCE"
-                    })
-                }) {
-                    Text("SORT: $sort")
+                androidx.compose.foundation.layout.Box {
+                    TextButton(onClick = { sortMenuOpen = true }) {
+                        Text("SORT: " + when (sort) {
+                            "RATE_ASC" -> "RATE ↑"
+                            "RATE_DESC" -> "RATE ↓"
+                            "SOURCE" -> "SOURCE"
+                            else -> "CONFIDENCE"
+                        })
+                    }
+                    DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { sortMenuOpen = false }) {
+                        listOf(
+                            "CONFIDENCE" to "Confidence",
+                            "RATE_ASC" to "Rate: low to high",
+                            "RATE_DESC" to "Rate: high to low",
+                            "SOURCE" to "Source document"
+                        ).forEach { (value, label) ->
+                            DropdownMenuItem(text = { Text(label) }, onClick = {
+                                vm.setCandidateSort(value)
+                                sortMenuOpen = false
+                            })
+                        }
+                    }
                 }
+                TextButton(onClick = {
+                    vm.setRateCandidateQuery("")
+                    vm.setCandidateScope("")
+                    vm.setCandidateMinConfidence(0)
+                    vm.setCandidateSort("CONFIDENCE")
+                    expanded.clear()
+                }) { Text("CLEAR ALL") }
             }
             Spacer(Modifier.height(7.dp))
             Row(
@@ -152,6 +177,10 @@ fun RateCandidatesScreen(
             }
         }
         Spacer(Modifier.height(8.dp))
+        Text("${candidates.size} matching candidates · ${clusters.size} groups",
+            modifier = Modifier.padding(horizontal = 14.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = ProcurementColors.TextSecondary)
 
         if (candidates.isEmpty()) {
             EmptyState(
