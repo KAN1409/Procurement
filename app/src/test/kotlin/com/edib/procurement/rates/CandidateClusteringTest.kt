@@ -68,6 +68,10 @@ class CandidateClusteringTest {
         assertEquals(true, CandidateClustering.showSources("gypsum", false))
         assertEquals(true, CandidateClustering.showSources("", true))
         assertEquals(false, CandidateClustering.showSources("", false))
+        assertEquals(true, CandidateClustering.showSources("", false, "RATE_ASC"))
+        assertEquals(true, CandidateClustering.showSources("", false, "RATE_DESC"))
+        assertEquals(true, CandidateClustering.showSources("", false, "SOURCE"))
+        assertEquals(false, CandidateClustering.showSources("", false, "CONFIDENCE"))
     }
 
     @Test fun equivalentUnitsGroupTogether() {
