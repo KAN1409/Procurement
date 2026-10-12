@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -1138,10 +1139,9 @@ fun AddRateScreen(
                     onValueChange = { rate = it },
                     modifier = Modifier.weight(1f)
                 )
-                RateField(
-                    label = "Currency",
+                SimpleCurrencyDropdown(
                     value = currency,
-                    onValueChange = { currency = it },
+                    onSelect = { currency = it },
                     modifier = Modifier.weight(0.8f)
                 )
             }
@@ -1412,6 +1412,33 @@ private fun RateField(
             .fillMaxWidth()
             .padding(bottom = 7.dp)
     )
+}
+
+@Composable
+private fun SimpleCurrencyDropdown(
+    value: String,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(modifier) {
+        Text("Currency", style = MaterialTheme.typography.labelSmall,
+            color = ProcurementColors.TextSecondary)
+        Box {
+            OutlinedButton(
+                onClick = { expanded = true },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("$value ▾", maxLines = 1) }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                listOf("EGP", "USD", "EUR").forEach { code ->
+                    DropdownMenuItem(text = { Text(code) }, onClick = {
+                        onSelect(code)
+                        expanded = false
+                    })
+                }
+            }
+        }
+    }
 }
 
 private val COMMERCIAL_UNITS = listOf(

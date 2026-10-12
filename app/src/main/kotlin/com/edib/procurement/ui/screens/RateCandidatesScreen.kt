@@ -224,7 +224,8 @@ fun RateCandidatesScreen(
                 Modifier.fillMaxSize(),
                 state = candidateListState,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    horizontal = 14.dp,
+                    start = 14.dp,
+                    end = 14.dp,
                     top = 4.dp,
                     bottom = 104.dp
                 )
