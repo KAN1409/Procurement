@@ -55,8 +55,8 @@ object CandidateClustering {
     fun rateVariantCount(rows: List<RateCandidateRow>): Int = rows.map { it.rate }.distinct().size
 
     /** Search results expose matching evidence without a second tap. */
-    fun showSources(query: String, manuallyExpanded: Boolean): Boolean =
-        query.isNotBlank() || manuallyExpanded
+    fun showSources(query: String, manuallyExpanded: Boolean, sort: String = "CONFIDENCE"): Boolean =
+        query.isNotBlank() || manuallyExpanded || sort != "CONFIDENCE"
 
     fun group(candidates: List<RateCandidateRow>, sort: String = "CONFIDENCE"): List<Group> =
         candidates.asSequence()
