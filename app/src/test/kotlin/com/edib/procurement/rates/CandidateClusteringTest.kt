@@ -88,6 +88,28 @@ class CandidateClusteringTest {
         assertNotEquals(baseline, CandidateClustering.key("توريد رخام", "م2", "SUPPLY", "USD"))
     }
 
+
+    @Test fun galalaSpellingVariantsDoNotSilentlyMergeCommercialGroups() {
+        val taMarbuta = example(81, 101, "A/po.docx", 740.0)
+            .copy(itemRaw = "توريد رخام جلالة")
+        val ha = example(82, 102, "B/po.docx", 850.0)
+            .copy(itemRaw = "توريد رخام جلاله")
+        val grouped = CandidateClustering.group(listOf(taMarbuta, ha))
+        assertEquals(2, grouped.size)
+        assertEquals(setOf(81L, 82L), grouped.flatMap { it.candidates }.map { it.id }.toSet())
+        assertEquals(setOf(740.0, 850.0), grouped.flatMap { it.candidates }.map { it.rate }.toSet())
+    }
+
+    @Test fun materialSpecificationAndScopeStaySeparated() {
+        val polished = example(90, 110, "A/po.docx").copy(
+            itemRaw = "توريد رخام جلالة مصقول", inferredScope = "SUPPLY")
+        val honed = example(91, 111, "B/po.docx").copy(
+            itemRaw = "توريد رخام جلالة مط", inferredScope = "SUPPLY")
+        val installed = example(92, 112, "C/po.docx").copy(
+            itemRaw = "توريد رخام جلالة مصقول", inferredScope = "INSTALL")
+        assertEquals(3, CandidateClustering.group(listOf(polished, honed, installed)).size)
+    }
+
     @Test fun onlyPendingCandidatesAreGroupedAndRatesRemainUnchanged() {
         fun candidate(id: Long, status: String, rate: Double) = RateCandidateRow(
             id = id, sourceKey = "source-$id", sourceDocumentId = id,
