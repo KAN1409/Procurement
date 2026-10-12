@@ -125,13 +125,6 @@ fun RateCandidatesScreen(
                         }
                     }
                 }
-                TextButton(onClick = {
-                    vm.setRateCandidateQuery("")
-                    vm.setCandidateScope("")
-                    vm.setCandidateMinConfidence(0)
-                    vm.setCandidateSort("CONFIDENCE")
-                    expanded.clear()
-                }) { Text("CLEAR ALL") }
             }
             Spacer(Modifier.height(7.dp))
             Row(
@@ -177,10 +170,20 @@ fun RateCandidatesScreen(
             }
         }
         Spacer(Modifier.height(8.dp))
-        Text("${candidates.size} matching candidates · ${clusters.size} groups",
-            modifier = Modifier.padding(horizontal = 14.dp),
-            style = MaterialTheme.typography.labelSmall,
-            color = ProcurementColors.TextSecondary)
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("${candidates.size} matching candidates · ${clusters.size} groups",
+                style = MaterialTheme.typography.labelSmall,
+                color = ProcurementColors.TextSecondary)
+            TextButton(onClick = {
+                vm.setRateCandidateQuery("")
+                vm.setCandidateScope("")
+                vm.setCandidateMinConfidence(0)
+                vm.setCandidateSort("CONFIDENCE")
+                expanded.clear()
+            }) { Text("CLEAR ALL") }
+        }
 
         if (candidates.isEmpty()) {
             EmptyState(
