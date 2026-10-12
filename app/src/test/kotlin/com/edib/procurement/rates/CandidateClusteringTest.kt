@@ -43,6 +43,27 @@ class CandidateClusteringTest {
         )).single().candidates.map { it.id })
     }
 
+    @Test fun rateSortKeepsDaoOrderWithinGroupsAndOrdersGroupsByFirstRow() {
+        val low = example(1, 10, "A", 100.0)
+        val high = example(2, 20, "B", 900.0)
+        val middle = example(3, 30, "C", 400.0).copy(itemRaw = "توريد أرضية")
+        val asc = CandidateClustering.group(listOf(low, middle, high), "RATE_ASC")
+        assertEquals(listOf(1L, 2L), asc.first().candidates.map { it.id })
+        assertEquals(3L, asc.last().candidates.single().id)
+        val desc = CandidateClustering.group(listOf(high, middle, low), "RATE_DESC")
+        assertEquals(listOf(2L, 1L), desc.first().candidates.map { it.id })
+        assertEquals(3L, desc.last().candidates.single().id)
+    }
+
+    @Test fun sourceSortPreservesIncomingDaoOrdering() {
+        val first = example(3, 10, "A/same.docx")
+        val second = example(2, 20, "B/same.docx").copy(itemRaw = "توريد أرضية")
+        val third = example(1, 30, "C/same.docx")
+        val grouped = CandidateClustering.group(listOf(first, second, third), "SOURCE")
+        assertEquals(listOf(3L, 1L), grouped.first().candidates.map { it.id })
+        assertEquals(2L, grouped.last().candidates.single().id)
+    }
+
     @Test fun searchExposesSources() {
         assertEquals(true, CandidateClustering.showSources("gypsum", false))
         assertEquals(true, CandidateClustering.showSources("", true))
