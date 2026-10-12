@@ -58,10 +58,26 @@ object CandidateClustering {
     fun showSources(query: String, manuallyExpanded: Boolean): Boolean =
         query.isNotBlank() || manuallyExpanded
 
-    fun group(candidates: List<RateCandidateRow>): List<Group> =
+    fun group(candidates: List<RateCandidateRow>, sort: String = "CONFIDENCE"): List<Group> =
         candidates.asSequence()
             .filter { it.status == "PENDING" }
             .groupBy { key(it.itemRaw, it.unitRaw, it.inferredScope, it.currency) }
-            .map { (key, rows) -> Group(key, rows.sortedWith(compareByDescending<RateCandidateRow> { it.confidence }.thenBy { it.id })) }
-            .sortedWith(compareByDescending<Group> { it.candidates.size }.thenBy { it.key.item }.thenBy { it.key.unit }.thenBy { it.key.scope }.thenBy { it.key.currency })
+            .map { (key, rows) ->
+                Group(key, if (sort == "CONFIDENCE") {
+                    rows.sortedWith(compareByDescending<RateCandidateRow> { it.confidence }.thenBy { it.id })
+                } else {
+                    // DAO already ordered the rows. Do not undo its rate/source ordering.
+                    rows
+                })
+            }
+            .let { groups ->
+                if (sort == "CONFIDENCE") {
+                    groups.sortedWith(compareByDescending<Group> { it.candidates.size }.thenBy { it.key.item }.thenBy { it.key.unit }.thenBy { it.key.scope }.thenBy { it.key.currency })
+                } else {
+                    // LinkedHashMap from groupBy retains the first occurrence of each
+                    // group in the DAO result. A group's position reflects its first
+                    // sorted candidate; its members retain DAO ordering.
+                    groups
+                }
+            }
 }
