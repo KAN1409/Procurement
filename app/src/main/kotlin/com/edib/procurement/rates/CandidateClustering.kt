@@ -19,8 +19,9 @@ object CandidateClustering {
         val normalizedUnit = when (unit?.trim()?.lowercase(Locale.ROOT)) {
             "م2", "م٢", "م²", "متر مربع", "بالمتر المسطح", "m2", "sqm", "sq.m" -> "m2"
             "م3", "م٣", "م³", "m3", "cum" -> "m3"
-            "م", "متر", "lm", "linear meter" -> "lm"
+            "م", "متر", "م.ط", "م ط", "متر طولي", "lm", "linear meter" -> "lm"
             "عدد", "بالعدد", "no", "nos", "pcs", "piece" -> "each"
+            "مقطوعية", "مقطوعيه", "lot", "lump sum" -> "lot"
             else -> unit?.trim()?.lowercase(Locale.ROOT).orEmpty()
         }
         return GroupKey(normalizedItem, normalizedUnit, scope.orEmpty(), currency.orEmpty().uppercase(Locale.ROOT))
