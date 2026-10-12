@@ -13,11 +13,11 @@ object PoMetadataReader {
     private val numberLabel = Regex("""(?i)(?:\bpo\s*(?:no\.?|number|#)\b|رقم\s*أمر\s*(?:الإسناد|الاسناد|التوريد|الشراء))\s*[:：#-]?\s*([A-Z0-9][A-Z0-9/-]{3,})""")
     // Premier/Travco purchase-order header formats observed in real .doc sources.
     private val issuedOn = Regex("""(?:تحرير[اًاً]*\s*ف[يى]|تحرير\s*في)\s*[:：]?\s*([0-9٠-٩۰-۹]{1,2}[-/.][0-9٠-٩۰-۹]{1,2}[-/.][0-9٠-٩۰-۹]{4})""")
-    private val arabicOrder = Regex("""(?:أمر|امر)\s*(?:توريد|إسناد|اسناد)\s*/?\s*(?:رقم)?\s*[/#:() ]*\s*(?:B\s*)?\(?\s*([A-Z0-9]+(?:-[A-Z0-9]+){2,})\s*\)?""", RegexOption.IGNORE_CASE)
+    private val arabicOrder = Regex("""(?:أمر|امر)\s*(?:توريد|تركيب|إسناد|اسناد)\s*/?\s*(?:[AB]\s*/?\s*)?(?:رقم)?\s*[/#:() ]*\s*(?:[AB]\s*)?\(?\s*([A-Z0-9]+(?:-[A-Z0-9]+){2,})\s*\)?""", RegexOption.IGNORE_CASE)
     private val issueMonthYearDay = Regex("""(?:تحرير[اًاً]*\s*ف[يى]|تحرير\s*في)\s*[:：]?\s*([0-9٠-٩۰-۹]{1,2})/([0-9٠-٩۰-۹]{4})/\s*([0-9٠-٩۰-۹]{1,2})""")
     private val issueWords = Regex("""(?:تحرير[اًاً]*\s*ف[يى]|تحرير\s*في)\s*[:：]?\s*([0-9٠-٩۰-۹]{1,2})\s+(يناير|فبراير|مارس|أبريل|ابريل|مايو|يونيو|يوليو|أغسطس|اغسطس|سبتمبر|أكتوبر|اكتوبر|نوفمبر|ديسمبر)\s+([0-9٠-٩۰-۹]{4})""")
     private val reverseWordDate = Regex("""([0-9٠-٩۰-۹]{1,2})\s+(يناير|فبراير|مارس|أبريل|ابريل|مايو|يونيو|يوليو|أغسطس|اغسطس|سبتمبر|أكتوبر|اكتوبر|نوفمبر|ديسمبر)\s+([0-9٠-٩۰-۹]{4})\s+تحرير[اًاً]*\s*ف[يى]""")
-    private val headerPoCode = Regex("""(?i)\b(MMH[0-9]+-[A-Z]{2}-AR-[0-9]+-[0-9]{2}[A-Z]?)\b""")
+    private val headerPoCode = Regex("""(?i)\b((?:AQ)?MMH[0-9]*-[A-Z]{2}-AR-[0-9]+-[0-9]{2}[A-Z]?)\b""")
     private val formats = listOf("uuuu-M-d", "d-M-uuuu", "d/M/uuuu", "uuuu/M/d", "d.M.uuuu", "uuuu.M.d")
         .map { DateTimeFormatter.ofPattern(it).withResolverStyle(ResolverStyle.STRICT) }
 

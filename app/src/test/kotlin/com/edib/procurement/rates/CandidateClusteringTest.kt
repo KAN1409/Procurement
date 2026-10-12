@@ -74,6 +74,13 @@ class CandidateClusteringTest {
         assertEquals(false, CandidateClustering.showSources("", false, "CONFIDENCE"))
     }
 
+    @Test fun linearMeterVariantsGroupButNeverMixWithArea() {
+        assertEquals(CandidateClustering.key("وزر", "م.ط", "INSTALL", "EGP"),
+            CandidateClustering.key("وزر", "lm", "INSTALL", "EGP"))
+        assertNotEquals(CandidateClustering.key("وزر", "م.ط", "INSTALL", "EGP"),
+            CandidateClustering.key("وزر", "م2", "INSTALL", "EGP"))
+    }
+
     @Test fun equivalentUnitsGroupTogether() {
         assertEquals(
             CandidateClustering.key("توريد رخام", "م٢", "SUPPLY", "EGP"),

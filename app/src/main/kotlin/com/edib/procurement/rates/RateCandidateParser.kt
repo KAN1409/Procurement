@@ -435,7 +435,7 @@ object RateCandidateParser {
     private val NUMBER_REGEX = Regex("""[-+]?[0-9٠-٩۰-۹]+(?:[,.٬٫][0-9٠-٩۰-۹]{1,3})*(?:[.٫][0-9٠-٩۰-۹]+)?""")
 
     private val UNIT_REGEX = Regex(
-        """(?i)(?<![\p{L}\p{N}])(?:m\s*2|m²|sqm|sq\s*m|م\s*[2٢²]|متر\s*مربع|m\s*3|m³|cum|cu\s*m|م\s*[3٣³]|متر\s*مكعب|lm|l\s*m|linear\s*met(?:er|re)s?|م\s*ط|متر\s*طولي|kg|كجم|كيلو(?:جرام)?|ton|tons|طن|no|nos|each|ea|عدد|بالعدد|lot|lump\s*sum|مقطوعية|m|meter|metre|متر)(?![\p{L}\p{N}])"""
+        """(?i)(?<![\p{L}\p{N}])(?:m\s*2|m²|sqm|sq\s*m|م\s*[2٢²]|متر\s*مربع|m\s*3|m³|cum|cu\s*m|م\s*[3٣³]|متر\s*مكعب|lm|l\s*m|linear\s*met(?:er|re)s?|م\s*\.?\s*ط|متر\s*طولي|kg|كجم|كيلو(?:جرام)?|ton|tons|طن|no|nos|each|ea|عدد|بالعدد|lot|lump\s*sum|مقطوعية|m|meter|metre|متر)(?![\p{L}\p{N}])"""
     )
 
     private val CURRENCY_REGEX = Regex(

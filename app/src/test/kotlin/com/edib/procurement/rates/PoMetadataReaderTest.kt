@@ -76,6 +76,11 @@ class PoMetadataReaderTest {
         assertEquals(LocalDate.of(2025, 6, 16), result.date)
     }
 
+    @Test fun installationOrderHeaderNumberIsRecognized() {
+        val result = PoMetadataReader.extract(source("أمر تركيب / B رقم (MMH2-GR-AR-0238-26)\nتحريرا في :21/07/2026"))
+        assertEquals("MMH2-GR-AR-0238-26", result.number)
+    }
+
     @Test fun invalidCalendarDatesAreRejected() {
         val result = PoMetadataReader.extract(source("PO Date: 31/02/2026"))
         assertNull(result.date)

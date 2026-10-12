@@ -99,6 +99,12 @@ class RateCandidateParserTest {
         assertTrue(RateCandidateParser.suspiciousUnit("reference م2 2026"))
     }
 
+    @Test fun dottedLinearMeterIsRecognizedAndNotFlagged() {
+        assertTrue(!RateCandidateParser.suspiciousUnit("م.ط"))
+        assertTrue(!RateCandidateParser.suspiciousUnit("م ط"))
+        assertTrue(RateCandidateParser.suspiciousUnit("PO-22-M-26"))
+    }
+
     private fun source(text: String) = RateCorpusDocument(
         id = 7L,
         displayName = "source.xlsx",

@@ -61,9 +61,10 @@ object CandidateClustering {
     fun group(candidates: List<RateCandidateRow>, sort: String = "CONFIDENCE"): List<Group> =
         candidates.asSequence()
             .filter { it.status == "PENDING" }
-            .groupBy { key(it.itemRaw, it.unitRaw, it.inferredScope, it.currency) }
-            .map { (key, rows) ->
-                Group(key, if (sort == "CONFIDENCE") {
+            .groupBy { key(it.itemRaw, it.unitRaw, it.inferredScope, it.currency) to
+                (if (sort.startsWith("PO_DATE_")) it.sourceDocumentId?.toString() ?: it.sourceKey else "") }
+            .map { (grouping, rows) ->
+                Group(grouping.first, if (sort == "CONFIDENCE") {
                     rows.sortedWith(compareByDescending<RateCandidateRow> { it.confidence }.thenBy { it.id })
                 } else {
                     // DAO already ordered the rows. Do not undo its rate/source ordering.
