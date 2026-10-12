@@ -51,7 +51,7 @@ fun RateCandidatesScreen(
     val scope by vm.candidateScope.collectAsStateWithLifecycle()
     val confidence by vm.candidateMinConfidence.collectAsStateWithLifecycle()
     val sort by vm.candidateSort.collectAsStateWithLifecycle()
-    val clusters = remember(candidates) { CandidateClustering.group(candidates) }
+    val clusters = remember(candidates, sort) { CandidateClustering.group(candidates, sort) }
     val expanded = remember { mutableStateMapOf<String, Boolean>() }
 
     Column(
