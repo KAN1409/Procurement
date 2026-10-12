@@ -94,6 +94,9 @@ class RateCandidateParserTest {
         assertTrue(RateCandidateParser.suspiciousUnit("(ALMBT-UN-FU-0049-26)"))
         assertTrue(!RateCandidateParser.suspiciousUnit("م٢"))
         assertTrue(!RateCandidateParser.suspiciousUnit("عدد"))
+        assertTrue(!RateCandidateParser.suspiciousUnit("متر مربع"))
+        assertTrue(RateCandidateParser.suspiciousUnit("PO-22-M-26"))
+        assertTrue(RateCandidateParser.suspiciousUnit("reference م2 2026"))
     }
 
     private fun source(text: String) = RateCorpusDocument(
