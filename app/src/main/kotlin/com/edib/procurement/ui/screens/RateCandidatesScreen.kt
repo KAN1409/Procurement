@@ -2,6 +2,7 @@ package com.edib.procurement.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -25,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -43,6 +46,7 @@ import com.edib.procurement.ui.components.Chip
 import com.edib.procurement.ui.components.EmptyState
 import com.edib.procurement.ui.components.Panel
 import com.edib.procurement.ui.theme.ProcurementColors
+import kotlinx.coroutines.launch
 import java.text.DecimalFormat
 
 @Composable
@@ -73,6 +77,8 @@ fun RateCandidatesScreen(
     val clusters = remember(datedCandidates, sort) { CandidateClustering.group(datedCandidates, sort) }
     val expanded = remember { mutableStateMapOf<String, Boolean>() }
     var sortMenuOpen by remember { mutableStateOf(false) }
+    val candidateListState = rememberLazyListState()
+    val scrollScope = rememberCoroutineScope()
 
     Column(
         Modifier
@@ -213,11 +219,13 @@ fun RateCandidatesScreen(
                 }
             )
         } else {
+            Box(Modifier.fillMaxSize()) {
             LazyColumn(
                 Modifier.fillMaxSize(),
+                state = candidateListState,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(
                     horizontal = 14.dp,
-                    vertical = 4.dp
+                    vertical = 104.dp
                 )
             ) {
                 clusters.forEach { cluster ->
@@ -299,6 +307,22 @@ fun RateCandidatesScreen(
                         }
                     }
                 }
+            }
+            Column(
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalAlignment = Alignment.End
+            ) {
+                OutlinedButton(onClick = {
+                    scrollScope.launch { candidateListState.animateScrollToItem(0) }
+                }) { Text("↑ TOP") }
+                OutlinedButton(onClick = {
+                    scrollScope.launch {
+                        val lastIndex = candidateListState.layoutInfo.totalItemsCount - 1
+                        if (lastIndex >= 0) candidateListState.scrollToItem(lastIndex)
+                    }
+                }) { Text("↓ BOTTOM") }
+            }
             }
         }
     }
