@@ -155,10 +155,10 @@ fun RateCandidatesScreen(
 
         if (candidates.isEmpty()) {
             EmptyState(
-                if (scan.documentsScanned == 0) {
-                    "Scan indexed files to build a review queue from existing work documents."
+                if (pendingCount == 0 && query.isBlank() && scope.isBlank() && confidence == 0) {
+                    "No pending candidates. Scan indexed files to build a review queue."
                 } else {
-                    "No pending candidates match this search."
+                    "No pending candidates match the current search or filters."
                 }
             )
         } else {
