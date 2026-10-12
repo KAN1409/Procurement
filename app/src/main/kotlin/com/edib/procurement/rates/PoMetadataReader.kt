@@ -11,14 +11,17 @@ data class PoMetadata(val number: String? = null, val date: LocalDate? = null, v
 object PoMetadataReader {
     private val dateLabel = Regex("""(?i)(?:\bpo\s*date\b|\bpurchase\s*order\s*date\b|تاريخ\s*(?:أمر\s*(?:الإسناد|الاسناد|التوريد|الشراء)|الـ?\s*po))\s*[:：-]?\s*([0-9٠-٩۰-۹]{1,4}[-/.][0-9٠-٩۰-۹]{1,2}[-/.][0-9٠-٩۰-۹]{1,4})""")
     private val numberLabel = Regex("""(?i)(?:\bpo\s*(?:no\.?|number|#)\b|رقم\s*أمر\s*(?:الإسناد|الاسناد|التوريد|الشراء))\s*[:：#-]?\s*([A-Z0-9][A-Z0-9/-]{3,})""")
-    private val formats = listOf("uuuu-M-d", "d-M-uuuu", "d/M/uuuu", "uuuu/M/d", "d.M.uuuu", "uuuu.M.d")
+    // Premier/Travco purchase-order header formats observed in real .doc sources.
+    private val issuedOn = Regex("""(?:تحرير[اًاً]*\s*ف[يى]|تحرير\s*في)\s*[:：]?\s*([0-9٠-٩۰-۹]{1,2}[-/.][0-9٠-٩۰-۹]{1,2}[-/.][0-9٠-٩۰-۹]{4})""")
+    private val arabicOrder = Regex("""(?:أمر|امر)\s*(?:توريد|إسناد|اسناد)\s*/?\s*(?:رقم)?\s*[/#:() ]*\s*(?:B\s*)?\(?\s*([A-Z0-9]+(?:-[A-Z0-9]+){2,})\s*\)?""", RegexOption.IGNORE_CASE)
+    private     private val formats = listOf("uuuu-M-d", "d-M-uuuu", "d/M/uuuu", "uuuu/M/d", "d.M.uuuu", "uuuu.M.d")
         .map { DateTimeFormatter.ofPattern(it).withResolverStyle(ResolverStyle.STRICT) }
 
     fun extract(source: PoSourceText): PoMetadata {
         // Only inspect document heading area; dates in BOQ items aren't PO issue dates.
         val heading = source.extractedText.lineSequence().take(45).joinToString("\n")
-        val numbers = numberLabel.findAll(heading).map { it.groupValues[1] }.distinct().toList()
-        val dates = dateLabel.findAll(heading).mapNotNull { match ->
+        val numbers = (numberLabel.findAll(heading).map { it.groupValues[1] } + arabicOrder.findAll(heading).map { it.groupValues[1] }).distinct().toList()
+        val dates = (dateLabel.findAll(heading) + issuedOn.findAll(heading)).mapNotNull { match ->
             val normalized = match.groupValues[1].map { c -> when (c) {
                 in '٠'..'٩' -> ('0'.code + c.code - '٠'.code).toChar()
                 in '۰'..'۹' -> ('0'.code + c.code - '۰'.code).toChar()

@@ -31,6 +31,29 @@ class PoMetadataReaderTest {
         assertEquals(LocalDate.of(2026, 10, 12), result.date)
     }
 
+    @Test fun realPremierArabicOrderHeadingExtractsDateAndNumber() {
+        val result = PoMetadataReader.extract(source("امر توريد / رقم (MMH2-GR-AR-86-25)\nتحريرا في :17/11/2025\nإسم المورد محجوب للتجارة والاستيراد"))
+        assertEquals("MMH2-GR-AR-86-25", result.number)
+        assertEquals(LocalDate.of(2025, 11, 17), result.date)
+    }
+
+    @Test fun realPremierRevisedOrderUsesItsOwnDate() {
+        val result = PoMetadataReader.extract(source("امر توريد / رقم B (MMH2-GR-AR-86-25)\nتحريرا في :25/11/2025"))
+        assertEquals(LocalDate.of(2025, 11, 25), result.date)
+        assertEquals("MMH2-GR-AR-86-25", result.number)
+    }
+
+    @Test fun laterOrderSortDateAndActualInternalIdentifier() {
+        val result = PoMetadataReader.extract(source("امر توريد / رقم (MMH2-HS-AR-88-25)\nتحريرا في :17/11/2025"))
+        assertEquals("MMH2-HS-AR-88-25", result.number)
+        assertEquals(LocalDate.of(2025, 11, 17), result.date)
+    }
+
+    @Test fun realDecemberOrderDate() {
+        val result = PoMetadataReader.extract(source("امر توريد / رقم (MMH2-GR-AR-94-25)\nتحريرا في :1/12/2025"))
+        assertEquals(LocalDate.of(2025, 12, 1), result.date)
+    }
+
     @Test fun invalidCalendarDatesAreRejected() {
         val result = PoMetadataReader.extract(source("PO Date: 31/02/2026"))
         assertNull(result.date)
