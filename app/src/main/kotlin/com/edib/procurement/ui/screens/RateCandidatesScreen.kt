@@ -216,13 +216,13 @@ fun RateCandidatesScreen(
                                 style = MaterialTheme.typography.labelSmall,
                                 color = ProcurementColors.TextTertiary
                             )
-                            if (query.isBlank()) TextButton(onClick = { expanded[groupId] = expanded[groupId] != true }) {
+                            if (query.isBlank() && sort == "CONFIDENCE") TextButton(onClick = { expanded[groupId] = expanded[groupId] != true }) {
                                 Text(if (expanded[groupId] == true) "HIDE SOURCES" else "SHOW SOURCES")
                             }
                         }
                         HorizontalDivider(color = ProcurementColors.Graphite700)
                     }
-                    if (CandidateClustering.showSources(query, expanded[groupId] == true)) {
+                    if (CandidateClustering.showSources(query, expanded[groupId] == true, sort)) {
                         items(cluster.candidates, key = { it.id }) { candidate ->
                             CandidateRow(
                                 vm = vm,
