@@ -77,6 +77,7 @@ fun RatesScreen(
     val rates by vm.rates.collectAsStateWithLifecycle()
     val count by vm.rateCount.collectAsStateWithLifecycle()
     val candidateCount by vm.rateCandidateCount.collectAsStateWithLifecycle()
+    val evidenceCandidates by vm.rateEvidenceCandidates.collectAsStateWithLifecycle()
 
     Column(
         Modifier
@@ -131,27 +132,75 @@ fun RatesScreen(
         }
         Spacer(Modifier.height(8.dp))
 
-        if (rates.isEmpty()) {
-            EmptyState(
-                if (query.isBlank()) {
-                    "No commercial rates yet. Add the first observation from a trusted source."
-                } else {
-                    "No rate observations match this search."
-                }
+        // Keep ledger and unreviewed evidence distinct, even when ledger is empty.
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                horizontal = 14.dp, vertical = 4.dp
             )
-        } else {
-            LazyColumn(
-                Modifier.fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    horizontal = 14.dp,
-                    vertical = 4.dp
+        ) {
+            item {
+                SectionLabel("COMMERCIAL LEDGER · ${rates.size} results")
+                if (rates.isEmpty()) {
+                    Text(
+                        if (query.isBlank()) "No saved commercial observations yet."
+                        else "No saved commercial observations match this search.",
+                        color = ProcurementColors.TextSecondary,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(vertical = 10.dp)
+                    )
+                }
+            }
+            items(rates, key = { "rate:${it.id}" }) { rate ->
+                RateRow(vm, rate)
+                HorizontalDivider(color = ProcurementColors.Graphite700, thickness = 1.dp)
+            }
+            item {
+                Spacer(Modifier.height(14.dp))
+                SectionLabel("UNREVIEWED EXTRACTED EVIDENCE · ${evidenceCandidates.size} results")
+                Text(
+                    "Searchable hints only. Not approved prices. Contractor and PO date are unverified; open the original source before any decision.",
+                    color = ProcurementColors.TextSecondary,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(vertical = 6.dp)
                 )
-            ) {
-                items(rates, key = { it.id }) { rate ->
-                    RateRow(vm, rate)
-                    HorizontalDivider(
-                        color = ProcurementColors.Graphite700,
-                        thickness = 1.dp
+            }
+            items(evidenceCandidates.take(30), key = { "candidate:${it.id}" }) { candidate ->
+                Column(Modifier.fillMaxWidth().padding(vertical = 9.dp)) {
+                    Text(candidate.itemRaw, style = MaterialTheme.typography.titleSmall,
+                        color = ProcurementColors.TextPrimary, maxLines = 3,
+                        overflow = TextOverflow.Ellipsis)
+                    Text(
+                        "${MONEY.format(candidate.rate)} ${candidate.currency ?: "currency unknown"} / ${candidate.unitRaw ?: "unit unknown"}",
+                        color = ProcurementColors.AccentRedBright,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text("PENDING · extraction confidence ${candidate.confidence}% · NOT a commercial approval",
+                        color = ProcurementColors.TextSecondary,
+                        style = MaterialTheme.typography.labelSmall)
+                    Text("Source: ${candidate.sourceFileName} · ${candidate.evidenceLocator}",
+                        color = ProcurementColors.TextTertiary,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    TextButton(onClick = onCandidates) { Text("REVIEW SOURCE IN CANDIDATES") }
+                }
+                HorizontalDivider(color = ProcurementColors.Graphite700, thickness = 1.dp)
+            }
+            if (evidenceCandidates.size > 30) {
+                item {
+                    TextButton(onClick = onCandidates) {
+                        Text("OPEN ALL ${evidenceCandidates.size} CANDIDATES")
+                    }
+                }
+            }
+            if (evidenceCandidates.isEmpty()) {
+                item {
+                    Text(
+                        if (query.isBlank()) "No pending extracted evidence available."
+                        else "No pending extracted evidence matches this search.",
+                        color = ProcurementColors.TextSecondary,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(vertical = 10.dp)
                     )
                 }
             }

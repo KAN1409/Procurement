@@ -165,6 +165,11 @@ class ProcurementViewModel(app: Application) : AndroidViewModel(app) {
         _rateQuery.flatMapLatest { q -> repo.rates(q) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** Read-only evidence discovery: PENDING extractions are not commercial rates. */
+    val rateEvidenceCandidates: StateFlow<List<RateCandidateRow>> =
+        _rateQuery.flatMapLatest { q -> repo.rateCandidates(q) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     val rateCount: StateFlow<Int> = repo.rateCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
