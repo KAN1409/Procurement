@@ -1122,6 +1122,8 @@ fun AddRateScreen(
     var notes by rememberSaveable { mutableStateOf("") }
     var selectedSource by remember { mutableStateOf<RateSourceChoice?>(null) }
     var localError by rememberSaveable { mutableStateOf<String?>(null) }
+    var evidenceExpanded by rememberSaveable(candidate?.id) { mutableStateOf(false) }
+    var detailsExpanded by rememberSaveable(candidate?.id) { mutableStateOf(false) }
 
     LaunchedEffect(candidate?.id) {
         candidate?.let { c ->
@@ -1184,144 +1186,28 @@ fun AddRateScreen(
         )
         Column(
             Modifier
-                .fillMaxSize()
+                .weight(1f)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 14.dp, vertical = 4.dp)
         ) {
             if (candidate != null) {
                 Panel {
-                    Text(
-                        "Extracted candidate · not trusted yet",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = ProcurementColors.StatusWarn
-                    )
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        "Review the original source. Candidate saves remain OBSERVED only; they cannot become approved or awarded through this form.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = ProcurementColors.TextTertiary
-                    )
+                    Text("EXTRACTED · NOT VERIFIED", color = ProcurementColors.StatusWarn,
+                        style = MaterialTheme.typography.labelMedium)
+                    Spacer(Modifier.height(6.dp))
+                    Text(candidate!!.itemRaw, color = ProcurementColors.TextPrimary,
+                        style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(8.dp))
+                    Text("${MONEY.format(candidate!!.rate)} ${candidate!!.currency ?: "CURRENCY UNKNOWN"} / ${candidate!!.unitRaw ?: "UNIT UNKNOWN"}",
+                        color = ProcurementColors.AccentRedBright,
+                        style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(5.dp))
+                    Text("Extracted value only. Check item, price, unit and source before saving.",
+                        color = ProcurementColors.TextSecondary,
+                        style = MaterialTheme.typography.bodySmall)
                 }
                 Spacer(Modifier.height(10.dp))
             }
-            SectionLabel("Commercial item")
-            RateField("Item description *", item, singleLine = false) { item = it }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                RateField(
-                    label = "Material",
-                    value = material,
-                    onValueChange = { material = it },
-                    modifier = Modifier.weight(1f)
-                )
-                RateField(
-                    label = "Dimensions",
-                    value = dimensions,
-                    onValueChange = { dimensions = it },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            RateField("Specification", specification) { specification = it }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                UnitDropdown(
-                    value = unit,
-                    extractedValue = candidate?.unitRaw,
-                    onSelect = { unit = it },
-                    modifier = Modifier.weight(1f)
-                )
-                RateField(
-                    label = "Rate *",
-                    value = rate,
-                    onValueChange = { rate = it },
-                    modifier = Modifier.weight(1f)
-                )
-                SimpleCurrencyDropdown(
-                    value = currency,
-                    onSelect = { currency = it },
-                    modifier = Modifier.weight(0.8f)
-                )
-            }
-
-            Spacer(Modifier.height(12.dp))
-            SectionLabel("Scope")
-            ChoiceRow(
-                choices = RateScope.all,
-                selected = scope,
-                label = ::scopeLabel,
-                onSelect = { scope = it }
-            )
-
-            Spacer(Modifier.height(12.dp))
-            SectionLabel("Commercial status")
-            ChoiceRow(
-                choices = RateStatus.all,
-                selected = status,
-                label = { it },
-                onSelect = { status = it }
-            )
-            if (status in RateStatus.sourceRequired) {
-                Text(
-                    "A source document is required for ${status.lowercase()} rates.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = ProcurementColors.StatusWarn
-                )
-            }
-
-            Spacer(Modifier.height(12.dp))
-            SectionLabel("Context")
-            RateField(
-                "Contractor",
-                contractorText,
-                onValueChange = {
-                    contractorText = it
-                    contractorId = null
-                }
-            )
-            if (contractorSuggestions.isNotEmpty() && contractorId == null) {
-                SuggestionPanel {
-                    contractorSuggestions.forEach { c ->
-                        SuggestionLine(c.canonicalName) {
-                            contractorText = c.canonicalName
-                            contractorId = c.id
-                        }
-                    }
-                }
-            }
-
-            RateField(
-                "Project",
-                projectText,
-                onValueChange = {
-                    projectText = it
-                    projectId = null
-                }
-            )
-            if (projectSuggestions.isNotEmpty() && projectId == null) {
-                SuggestionPanel {
-                    projectSuggestions.forEach { p ->
-                        SuggestionLine(p.canonicalName) {
-                            projectText = p.canonicalName
-                            projectId = p.id
-                        }
-                    }
-                }
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                RateField(
-                    label = "Location",
-                    value = location,
-                    onValueChange = { location = it },
-                    modifier = Modifier.weight(1f)
-                )
-                RateField(
-                    label = "Quantity",
-                    value = quantity,
-                    onValueChange = { quantity = it },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            RateField("Date (YYYY-MM-DD) *", date) { date = it }
-
             Spacer(Modifier.height(12.dp))
             SectionLabel("Source evidence")
             if (selectedSource == null) {
@@ -1384,9 +1270,156 @@ fun AddRateScreen(
                 }
             }
 
+            if (candidate != null) {
+                SectionLabel("VERIFY BEFORE SAVING")
+                Text(
+                    "Required: item, unit, positive rate, currency, date and linked source. Saving creates OBSERVED only.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ProcurementColors.StatusWarn
+                )
+                Spacer(Modifier.height(8.dp))
+            }
+            SectionLabel("Commercial item")
+            RateField("Item description *", item, singleLine = false) { item = it }
+            if (candidate == null || detailsExpanded) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                RateField(
+                    label = "Material",
+                    value = material,
+                    onValueChange = { material = it },
+                    modifier = Modifier.weight(1f)
+                )
+                RateField(
+                    label = "Dimensions",
+                    value = dimensions,
+                    onValueChange = { dimensions = it },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            RateField("Specification", specification) { specification = it }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                UnitDropdown(
+                    value = unit,
+                    extractedValue = candidate?.unitRaw,
+                    onSelect = { unit = it },
+                    modifier = Modifier.weight(1f)
+                )
+                RateField(
+                    label = "Rate *",
+                    value = rate,
+                    onValueChange = { rate = it },
+                    modifier = Modifier.weight(1f)
+                )
+                SimpleCurrencyDropdown(
+                    value = currency,
+                    onSelect = { currency = it },
+                    modifier = Modifier.weight(0.8f)
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+            SectionLabel("Scope")
+            ChoiceRow(
+                choices = RateScope.all,
+                selected = scope,
+                label = ::scopeLabel,
+                onSelect = { scope = it }
+            )
+
+            if (candidate == null) {
+            Spacer(Modifier.height(12.dp))
+            SectionLabel("Commercial status")
+            ChoiceRow(
+                choices = RateStatus.all,
+                selected = status,
+                label = { it },
+                onSelect = { status = it }
+            )
+            if (status in RateStatus.sourceRequired) {
+                Text(
+                    "A source document is required for ${status.lowercase()} rates.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ProcurementColors.StatusWarn
+                )
+            }
+
+            } else {
+                Text("Commercial status: OBSERVED · approval unavailable in candidate review",
+                    color = ProcurementColors.TextSecondary,
+                    style = MaterialTheme.typography.labelMedium)
+            }
+
+            Spacer(Modifier.height(12.dp))
+            SectionLabel("Context")
+            RateField(
+                "Contractor",
+                contractorText,
+                onValueChange = {
+                    contractorText = it
+                    contractorId = null
+                }
+            )
+            if (contractorSuggestions.isNotEmpty() && contractorId == null) {
+                SuggestionPanel {
+                    contractorSuggestions.forEach { c ->
+                        SuggestionLine(c.canonicalName) {
+                            contractorText = c.canonicalName
+                            contractorId = c.id
+                        }
+                    }
+                }
+            }
+
+            RateField(
+                "Project",
+                projectText,
+                onValueChange = {
+                    projectText = it
+                    projectId = null
+                }
+            )
+            if (projectSuggestions.isNotEmpty() && projectId == null) {
+                SuggestionPanel {
+                    projectSuggestions.forEach { p ->
+                        SuggestionLine(p.canonicalName) {
+                            projectText = p.canonicalName
+                            projectId = p.id
+                        }
+                    }
+                }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                RateField(
+                    label = "Location",
+                    value = location,
+                    onValueChange = { location = it },
+                    modifier = Modifier.weight(1f)
+                )
+                RateField(
+                    label = "Quantity",
+                    value = quantity,
+                    onValueChange = { quantity = it },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            RateField("Date (YYYY-MM-DD) *", date) { date = it }
+
+            if (candidate != null) {
+                TextButton(onClick = { evidenceExpanded = !evidenceExpanded }) {
+                    Text(if (evidenceExpanded) "HIDE EVIDENCE & NOTES" else "SHOW EVIDENCE & NOTES")
+                }
+                TextButton(onClick = { detailsExpanded = !detailsExpanded }) {
+                    Text(if (detailsExpanded) "HIDE MATERIAL DETAILS" else "EDIT MATERIAL DETAILS")
+                }
+            }
+            if (candidate == null || evidenceExpanded) {
             RateField("Evidence locator", evidenceLocator) { evidenceLocator = it }
             RateField("Evidence text", evidenceText, singleLine = false) { evidenceText = it }
             RateField("Notes", notes, singleLine = false) { notes = it }
+
+            }
 
             localError?.let {
                 Spacer(Modifier.height(6.dp))
@@ -1397,6 +1430,9 @@ fun AddRateScreen(
                 )
             }
 
+            Spacer(Modifier.height(24.dp))
+        }
+        // Persistent save action stays visible while the verification form scrolls.
             Spacer(Modifier.height(14.dp))
             Row(
                 Modifier.fillMaxWidth(),
@@ -1475,11 +1511,9 @@ fun AddRateScreen(
                         containerColor = ProcurementColors.AccentRed
                     )
                 ) {
-                    Text("SAVE RATE")
+                    Text(if (candidate != null) "SAVE AS OBSERVED" else "SAVE RATE")
                 }
             }
-            Spacer(Modifier.height(24.dp))
-        }
     }
 }
 
