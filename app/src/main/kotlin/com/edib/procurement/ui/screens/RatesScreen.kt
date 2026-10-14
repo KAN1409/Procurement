@@ -165,31 +165,77 @@ fun RatesScreen(
                     modifier = Modifier.padding(vertical = 6.dp)
                 )
             }
-            items(evidenceCandidates.take(30), key = { "candidate:${it.id}" }) { candidate ->
-                Column(Modifier.fillMaxWidth().padding(vertical = 9.dp)) {
-                    Text(candidate.itemRaw, style = MaterialTheme.typography.titleSmall,
-                        color = ProcurementColors.TextPrimary, maxLines = 3,
-                        overflow = TextOverflow.Ellipsis)
+            items(evidenceCandidates.take(12), key = { "candidate:${it.id}" }) { candidate ->
+                Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
                     Text(
-                        "${MONEY.format(candidate.rate)} ${candidate.currency ?: "currency unknown"} / ${candidate.unitRaw ?: "unit unknown"}",
-                        color = ProcurementColors.AccentRedBright,
-                        style = MaterialTheme.typography.bodyMedium
+                        candidate.itemRaw,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = ProcurementColors.TextPrimary,
+                        maxLines = 4,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    Text("PENDING · extraction confidence ${candidate.confidence}% · NOT a commercial approval",
+                    Spacer(Modifier.height(5.dp))
+                    Text(
+                        "${MONEY.format(candidate.rate)} ${candidate.currency ?: "currency unknown"} / ${candidate.unitRaw ?: "UNIT UNKNOWN"}",
+                        color = ProcurementColors.AccentRedBright,
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    if (candidate.unitRaw.isNullOrBlank()) {
+                        Text(
+                            "Unit must be verified against the original document.",
+                            color = ProcurementColors.StatusWarn,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                    Text(
+                        "UNREVIEWED EXTRACTION · ${candidate.confidence}% parser confidence",
                         color = ProcurementColors.TextSecondary,
-                        style = MaterialTheme.typography.labelSmall)
-                    Text("Source: ${candidate.sourceFileName} · ${candidate.evidenceLocator}",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                    Text(
+                        candidate.evidenceText,
+                        color = ProcurementColors.TextSecondary,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "SOURCE · ${candidate.sourceFileName} · ${candidate.evidenceLocator}",
                         color = ProcurementColors.TextTertiary,
                         style = MaterialTheme.typography.labelSmall,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    TextButton(onClick = onCandidates) { Text("REVIEW SOURCE IN CANDIDATES") }
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (candidate.sourceUri.isNotBlank()) {
+                            TextButton(onClick = {
+                                vm.openDocument(
+                                    candidate.sourceUri,
+                                    candidate.sourceExtension,
+                                    candidate.sourceMimeType
+                                )
+                            }) { Text("OPEN SOURCE") }
+                        } else {
+                            Text(
+                                "Source unavailable",
+                                color = ProcurementColors.StatusWarn,
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                        TextButton(onClick = onCandidates) { Text("REVIEW IN CANDIDATES") }
+                    }
                 }
                 HorizontalDivider(color = ProcurementColors.Graphite700, thickness = 1.dp)
             }
-            if (evidenceCandidates.size > 30) {
+            if (evidenceCandidates.size > 12) {
                 item {
                     TextButton(onClick = onCandidates) {
-                        Text("OPEN ALL ${evidenceCandidates.size} CANDIDATES")
+                        Text("VIEW ALL ${evidenceCandidates.size} MATCHING CANDIDATES")
                     }
                 }
             }
