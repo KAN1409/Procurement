@@ -169,11 +169,6 @@ fun RateCandidatesScreen(
                     scan.error ?: "Scanning indexed files: ${scan.documentsScanned}",
                     style = MaterialTheme.typography.labelSmall, color = ProcurementColors.TextSecondary)
             }
-        } else {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
-                horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = { headerVisible = true }) { Text("SEARCH / FILTER") }
-            }
         }
         if (candidates.isEmpty()) {
             EmptyState(
