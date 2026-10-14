@@ -30,6 +30,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
@@ -78,152 +80,101 @@ fun RateCandidatesScreen(
     val expanded = remember { mutableStateMapOf<String, Boolean>() }
     var sortMenuOpen by remember { mutableStateOf(false) }
     var scanActionsOpen by remember { mutableStateOf(false) }
+    var filterMenuOpen by remember { mutableStateOf(false) }
+    var headerVisible by remember { mutableStateOf(true) }
+
     val candidateListState = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
+    LaunchedEffect(candidateListState) {
+        var oldIndex = candidateListState.firstVisibleItemIndex
+        var oldOffset = candidateListState.firstVisibleItemScrollOffset
+        snapshotFlow {
+            Triple(candidateListState.firstVisibleItemIndex,
+                candidateListState.firstVisibleItemScrollOffset,
+                candidateListState.isScrollInProgress)
+        }.collect { (index, offset, scrolling) ->
+            if (scrolling) {
+                val delta = if (index == oldIndex) offset - oldOffset else if (index > oldIndex) 40 else -40
+                if (delta > 8 && !sortMenuOpen && !filterMenuOpen && !scanActionsOpen) headerVisible = false
+                if (delta < -8 || (index == 0 && offset == 0)) headerVisible = true
+            }
+            oldIndex = index
+            oldOffset = offset
+        }
+    }
+    LaunchedEffect(query, scope, confidence, sort) {
+        headerVisible = true
+        candidateListState.scrollToItem(0)
+    }
 
     Column(
         Modifier
             .fillMaxSize()
             .background(ProcurementColors.Graphite900)
     ) {
-        ScreenHeader("Rate Candidates", "$pendingCount pending review")
-        Column(Modifier.padding(horizontal = 14.dp)) {
-            Panel {
-                Text(
-                    "Candidates are extracted hints, not trusted rates.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = ProcurementColors.TextPrimary
-                )
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    "Nothing enters commercial memory until you review it and save it as an observation.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = ProcurementColors.TextTertiary
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            SearchField(
-                value = query,
-                onValueChange = vm::setRateCandidateQuery,
-                placeholder = "Search candidate item, evidence or source…",
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(7.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                TextButton(onClick = { vm.setCandidateScope(if (scope == "SUPPLY") "" else "SUPPLY") }) {
-                    Text(if (scope == "SUPPLY") "✓ SUPPLY" else "SUPPLY")
-                }
-                TextButton(onClick = { vm.setCandidateScope(if (scope == "INSTALL") "" else "INSTALL") }) {
-                    Text(if (scope == "INSTALL") "✓ INSTALL" else "INSTALL")
-                }
-                TextButton(onClick = { vm.setCandidateScope(if (scope == "SUPPLY_INSTALL") "" else "SUPPLY_INSTALL") }) {
-                    Text(if (scope == "SUPPLY_INSTALL") "✓ BOTH" else "BOTH")
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                TextButton(onClick = { vm.setCandidateMinConfidence(if (confidence == 0) 80 else 0) }) {
-                    Text(if (confidence == 0) "ALL CONFIDENCE" else "≥80% ONLY")
-                }
-                androidx.compose.foundation.layout.Box {
-                    TextButton(onClick = { sortMenuOpen = true }) {
-                        Text("SORT: " + when (sort) {
-                            "RATE_ASC" -> "RATE ↑"
-                            "RATE_DESC" -> "RATE ↓"
-                            "SOURCE" -> "SOURCE"
-                            "PO_DATE_DESC" -> "NEWEST PO"
-                            "PO_DATE_ASC" -> "OLDEST PO"
-                            else -> "CONFIDENCE"
-                        })
-                    }
-                    DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { sortMenuOpen = false }) {
-                        listOf(
-                            "CONFIDENCE" to "Confidence",
-                            "RATE_ASC" to "Rate: low to high",
-                            "RATE_DESC" to "Rate: high to low",
-                            "SOURCE" to "Source document",
-                            "PO_DATE_DESC" to "PO date: newest first",
-                            "PO_DATE_ASC" to "PO date: oldest first"
-                        ).forEach { (value, label) ->
-                            DropdownMenuItem(text = { Text(label) }, onClick = {
-                                vm.setCandidateSort(value)
-                                sortMenuOpen = false
-                            })
+        if (headerVisible) {
+            Column(Modifier.padding(horizontal = 14.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = onBack) { Text("BACK") }
+                    Text("RATE CANDIDATES", style = MaterialTheme.typography.titleMedium,
+                        color = ProcurementColors.TextPrimary)
+                    Box {
+                        TextButton(onClick = { scanActionsOpen = true }) { Text("OPTIONS") }
+                        DropdownMenu(expanded = scanActionsOpen, onDismissRequest = { scanActionsOpen = false }) {
+                            DropdownMenuItem(text = { Text("Scan indexed files (explicit action)") },
+                                enabled = !scan.running, onClick = { scanActionsOpen = false; vm.scanRateCandidates() })
                         }
                     }
                 }
-            }
-            Spacer(Modifier.height(7.dp))
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(onClick = onBack) { Text("BACK") }
-                Box {
-                    TextButton(onClick = { scanActionsOpen = true }) {
-                        Text(if (scan.running) "SCANNING…" else "SCAN OPTIONS")
-                    }
-                    DropdownMenu(
-                        expanded = scanActionsOpen,
-                        onDismissRequest = { scanActionsOpen = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Scan indexed files (explicit action)") },
-                            enabled = !scan.running,
-                            onClick = {
-                                scanActionsOpen = false
-                                vm.scanRateCandidates()
+                SearchField(value = query, onValueChange = vm::setRateCandidateQuery,
+                    placeholder = "Search item, evidence or source…", modifier = Modifier.fillMaxWidth())
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text("${candidates.size} matches · ${clusters.size} groups",
+                        style = MaterialTheme.typography.labelSmall, color = ProcurementColors.TextSecondary)
+                    Row {
+                        Box {
+                            TextButton(onClick = { filterMenuOpen = true }) { Text("FILTER") }
+                            DropdownMenu(expanded = filterMenuOpen, onDismissRequest = { filterMenuOpen = false }) {
+                                listOf("" to "All scopes", "SUPPLY" to "Supply", "INSTALL" to "Install",
+                                    "SUPPLY_INSTALL" to "Supply + install").forEach { (value, label) ->
+                                    DropdownMenuItem(text = { Text(label) }, onClick = {
+                                        vm.setCandidateScope(value); filterMenuOpen = false })
+                                }
+                                DropdownMenuItem(text = { Text(if (confidence == 0) "Confidence ≥80%" else "All confidence") },
+                                    onClick = { vm.setCandidateMinConfidence(if (confidence == 0) 80 else 0); filterMenuOpen = false })
                             }
-                        )
+                        }
+                        Box {
+                            TextButton(onClick = { sortMenuOpen = true }) { Text("SORT") }
+                            DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { sortMenuOpen = false }) {
+                                listOf("CONFIDENCE" to "Confidence", "RATE_ASC" to "Rate low to high",
+                                    "RATE_DESC" to "Rate high to low", "SOURCE" to "Source",
+                                    "PO_DATE_DESC" to "Newest PO", "PO_DATE_ASC" to "Oldest PO").forEach { (value, label) ->
+                                    DropdownMenuItem(text = { Text(label) }, onClick = {
+                                        vm.setCandidateSort(value); sortMenuOpen = false })
+                                }
+                            }
+                        }
                     }
                 }
+                if (query.isNotBlank() || scope.isNotBlank() || confidence > 0 || sort != "CONFIDENCE") {
+                    TextButton(onClick = {
+                        vm.setRateCandidateQuery(""); vm.setCandidateScope("")
+                        vm.setCandidateMinConfidence(0); vm.setCandidateSort("CONFIDENCE"); expanded.clear()
+                    }) { Text("CLEAR FILTERS") }
+                }
+                if (scan.running || scan.error != null) Text(
+                    scan.error ?: "Scanning indexed files: ${scan.documentsScanned}",
+                    style = MaterialTheme.typography.labelSmall, color = ProcurementColors.TextSecondary)
             }
-            if (scan.running || scan.documentsScanned > 0 || scan.error != null) {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    when {
-                        scan.error != null -> scan.error!!
-                        scan.running ->
-                            "${scan.documentsScanned} files · ${scan.candidatesInserted} new · ${scan.currentFile.orEmpty()}"
-                        else ->
-                            "${scan.documentsScanned} files scanned · ${scan.candidatesInserted} new candidates"
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (scan.error != null) {
-                        ProcurementColors.AccentRedBright
-                    } else {
-                        ProcurementColors.TextTertiary
-                    },
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+        } else {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { headerVisible = true }) { Text("SEARCH / FILTER") }
             }
         }
-        Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("${candidates.size} matching candidates · ${clusters.size} display groups",
-                style = MaterialTheme.typography.labelSmall,
-                color = ProcurementColors.TextSecondary)
-            TextButton(onClick = {
-                vm.setRateCandidateQuery("")
-                vm.setCandidateScope("")
-                vm.setCandidateMinConfidence(0)
-                vm.setCandidateSort("CONFIDENCE")
-                expanded.clear()
-            }) { Text("CLEAR ALL") }
-        }
-
-        if (sort.startsWith("PO_DATE_")) {
-            Text(
-                "PO-date sorting splits groups by source for traceability. Candidate count and IDs are unchanged; unknown dates remain unverified.",
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 3.dp),
-                color = ProcurementColors.TextSecondary,
-                style = MaterialTheme.typography.labelSmall
-            )
-        }
-
         if (candidates.isEmpty()) {
             EmptyState(
                 if (pendingCount == 0 && query.isBlank() && scope.isBlank() && confidence == 0) {
@@ -274,42 +225,19 @@ fun RateCandidatesScreen(
                                     style = MaterialTheme.typography.labelSmall
                                 )
                             }
-                            Text(
-                                "${rows.size} extractions · ${distinctFiles} files · ${CandidateClustering.rateVariantCount(rows)} rate values · ${cluster.key.unit} · ${cluster.key.scope}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = ProcurementColors.TextSecondary
-                            )
-                            Text(
-                                (if (cluster.candidates.any { RateCandidateParser.suspiciousUnit(it.unitRaw) || it.unitRaw.isNullOrBlank() })
-                                    "Unverified extracted values (unit needs review): ${MONEY.format(low)}–${MONEY.format(high)}"
-                                 else "Unverified range: ${MONEY.format(low)}–${MONEY.format(high)} ${cluster.key.currency} / ${cluster.key.unit}"),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = ProcurementColors.AccentRedBright
-                            )
-                            Text(
-                                "Repeated values may be copied across files; not independent bids, approved prices, or necessarily comparable.",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = ProcurementColors.TextTertiary
-                            )
-                            Text(
-                                "${evidence.repeatedEvidenceGroups} repeated evidence groups · " +
-                                    "${evidence.matchingValueGroups} matching value groups" +
-                                    (if (evidence.unknownSources > 0) " · ${evidence.unknownSources} unknown sources" else ""),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = ProcurementColors.TextSecondary
-                            )
-                            Text(
-                                "Evidence relationships only; no candidates merged or independent offers inferred.",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = ProcurementColors.TextTertiary
-                            )
-                            if (query.isBlank() && sort == "CONFIDENCE") TextButton(onClick = { expanded[groupId] = expanded[groupId] != true }) {
+                            Text("${rows.size} extractions · ${distinctFiles} source files · ${CandidateClustering.rateVariantCount(rows)} extracted values",
+                                style = MaterialTheme.typography.labelSmall, color = ProcurementColors.TextSecondary)
+                            Text(if (rows.size == 1)
+                                "Extracted: ${MONEY.format(rows.first().rate)} ${rows.first().currency.orEmpty()} / ${rows.first().unitRaw ?: "UNIT UNKNOWN"}"
+                                else "Multiple unverified values · expand for source evidence",
+                                style = MaterialTheme.typography.bodyMedium, color = ProcurementColors.AccentRedBright)
+                            TextButton(onClick = { expanded[groupId] = expanded[groupId] != true }) {
                                 Text(if (expanded[groupId] == true) "HIDE SOURCES" else "SHOW SOURCES")
                             }
                         }
                         HorizontalDivider(color = ProcurementColors.Graphite700)
                     }
-                    if (CandidateClustering.showSources(query, expanded[groupId] == true, sort)) {
+                    if (expanded[groupId] == true) {
                         items(cluster.candidates, key = { it.id }) { candidate ->
                             CandidateRow(
                                 vm = vm,
@@ -326,7 +254,7 @@ fun RateCandidatesScreen(
                     }
                 }
             }
-            Column(
+            if (candidateListState.firstVisibleItemIndex > 2) Column(
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 horizontalAlignment = Alignment.End
@@ -334,12 +262,6 @@ fun RateCandidatesScreen(
                 OutlinedButton(onClick = {
                     scrollScope.launch { candidateListState.animateScrollToItem(0) }
                 }) { Text("↑ TOP") }
-                OutlinedButton(onClick = {
-                    scrollScope.launch {
-                        val lastIndex = candidateListState.layoutInfo.totalItemsCount - 1
-                        if (lastIndex >= 0) candidateListState.scrollToItem(lastIndex)
-                    }
-                }) { Text("↓ BOTTOM") }
             }
             }
         }
