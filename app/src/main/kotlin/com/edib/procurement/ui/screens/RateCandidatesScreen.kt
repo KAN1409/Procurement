@@ -77,6 +77,7 @@ fun RateCandidatesScreen(
     val clusters = remember(datedCandidates, sort) { CandidateClustering.group(datedCandidates, sort) }
     val expanded = remember { mutableStateMapOf<String, Boolean>() }
     var sortMenuOpen by remember { mutableStateOf(false) }
+    var scanActionsOpen by remember { mutableStateOf(false) }
     val candidateListState = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
 
@@ -154,23 +155,27 @@ fun RateCandidatesScreen(
             Spacer(Modifier.height(7.dp))
             Row(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                OutlinedButton(
-                    onClick = onBack,
-                    modifier = Modifier.weight(0.8f)
-                ) {
-                    Text("BACK")
-                }
-                Button(
-                    onClick = vm::scanRateCandidates,
-                    enabled = !scan.running,
-                    modifier = Modifier.weight(1.6f),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = ProcurementColors.AccentRed
-                    )
-                ) {
-                    Text(if (scan.running) "SCANNING…" else "SCAN INDEXED FILES")
+                TextButton(onClick = onBack) { Text("BACK") }
+                Box {
+                    TextButton(onClick = { scanActionsOpen = true }) {
+                        Text(if (scan.running) "SCANNING…" else "SCAN OPTIONS")
+                    }
+                    DropdownMenu(
+                        expanded = scanActionsOpen,
+                        onDismissRequest = { scanActionsOpen = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Scan indexed files (explicit action)") },
+                            enabled = !scan.running,
+                            onClick = {
+                                scanActionsOpen = false
+                                vm.scanRateCandidates()
+                            }
+                        )
+                    }
                 }
             }
             if (scan.running || scan.documentsScanned > 0 || scan.error != null) {
@@ -198,7 +203,7 @@ fun RateCandidatesScreen(
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("${candidates.size} matching candidates · ${clusters.size} groups",
+            Text("${candidates.size} matching candidates · ${clusters.size} display groups",
                 style = MaterialTheme.typography.labelSmall,
                 color = ProcurementColors.TextSecondary)
             TextButton(onClick = {
@@ -208,6 +213,15 @@ fun RateCandidatesScreen(
                 vm.setCandidateSort("CONFIDENCE")
                 expanded.clear()
             }) { Text("CLEAR ALL") }
+        }
+
+        if (sort.startsWith("PO_DATE_")) {
+            Text(
+                "PO-date sorting splits groups by source for traceability. Candidate count and IDs are unchanged; unknown dates remain unverified.",
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 3.dp),
+                color = ProcurementColors.TextSecondary,
+                style = MaterialTheme.typography.labelSmall
+            )
         }
 
         if (candidates.isEmpty()) {
