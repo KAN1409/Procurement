@@ -1197,7 +1197,7 @@ fun AddRateScreen(
                     )
                     Spacer(Modifier.height(3.dp))
                     Text(
-                        "Verify unit, currency, date, scope and commercial status against the source before saving.",
+                        "Review the original source. Candidate saves remain OBSERVED only; they cannot become approved or awarded through this form.",
                         style = MaterialTheme.typography.labelSmall,
                         color = ProcurementColors.TextTertiary
                     )
@@ -1432,6 +1432,10 @@ fun AddRateScreen(
                             quantity.isNotBlank() && quantityNumber == null -> "Quantity is not a valid number."
                             currency.isBlank() -> "Currency is required."
                             dateMillis == null -> "Date must be YYYY-MM-DD."
+                            candidate != null && selectedSource == null ->
+                                "A candidate must retain a linked source document before saving."
+                            candidate != null && status != RateStatus.OBSERVED ->
+                                "Candidate evidence can only be saved as OBSERVED. Approval requires a separate verified workflow."
                             status in RateStatus.sourceRequired && selectedSource == null ->
                                 "${status} requires a source document."
                             else -> null
