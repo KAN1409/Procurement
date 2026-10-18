@@ -38,6 +38,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.Alignment
@@ -416,6 +417,9 @@ fun FindRatesScreen(
 ) {
     val query by vm.rateFindQuery.collectAsStateWithLifecycle()
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    val draftStore = remember(context) { context.getSharedPreferences("travco_boq_research_drafts_v1", android.content.Context.MODE_PRIVATE) }
+    var savedDraftPreview by rememberSaveable { mutableStateOf("") }
     val selectedEvidence = remember { mutableStateMapOf<Long, Boolean>() }
     var travcoRateText by rememberSaveable { mutableStateOf("") }
     var travcoUnit by rememberSaveable { mutableStateOf("") }
@@ -574,8 +578,7 @@ fun FindRatesScreen(
                 }
                 RateField("Selection rationale / specification checks", selectionRationale, onValueChange = { selectionRationale = it })
                 RateField("Negotiation points / exclusions", negotiationNotes, onValueChange = { negotiationNotes = it })
-                TextButton(onClick = {
-                    val note = buildString {
+                val note = buildString {
                         appendLine("BOQ PRICE RESEARCH · DRAFT / NOT APPROVED")
                         appendLine("BOQ search: ${query.ifBlank { "Not entered" }}")
                         appendLine("Check item, material, specification, dimensions, unit, scope, currency and source before pricing.")
@@ -594,8 +597,31 @@ fun FindRatesScreen(
                         appendLine("Selection rationale: ${selectionRationale.ifBlank { "NOT VERIFIED" }}")
                         appendLine("Negotiation points: ${negotiationNotes.ifBlank { "NOT RECORDED" }}")
                     }
-                    clipboard.setText(AnnotatedString(note))
-                }) { Text("COPY AUDITABLE RESEARCH NOTE") }
+                TextButton(onClick = { clipboard.setText(AnnotatedString(note)) }) {
+                    Text("COPY AUDITABLE RESEARCH NOTE")
+                }
+                TextButton(
+                    enabled = query.isNotBlank(),
+                    onClick = {
+                        val key = query.trim().lowercase(java.util.Locale.ROOT)
+                        if (draftStore.edit().putString(key, note).commit()) savedDraftPreview = note
+                    }
+                ) { Text("SAVE LOCAL BOQ RESEARCH DRAFT") }
+                TextButton(
+                    enabled = query.isNotBlank(),
+                    onClick = {
+                        savedDraftPreview = draftStore.getString(
+                            query.trim().lowercase(java.util.Locale.ROOT), ""
+                        ).orEmpty()
+                    }
+                ) { Text("VIEW SAVED DRAFT FOR THIS BOQ SEARCH") }
+                if (savedDraftPreview.isNotBlank()) {
+                    Text("SAVED LOCAL SNAPSHOT · DRAFT ONLY · NOT APPROVED",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ProcurementColors.StatusWarn)
+                    Text(savedDraftPreview, style = MaterialTheme.typography.labelSmall,
+                        color = ProcurementColors.TextSecondary)
+                }
                 TextButton(onClick = { selectedEvidence.clear() }) { Text("CLEAR SHORTLIST") }
             }
         }
