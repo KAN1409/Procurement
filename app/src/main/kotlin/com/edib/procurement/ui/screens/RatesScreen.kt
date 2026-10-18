@@ -417,6 +417,11 @@ fun FindRatesScreen(
     val query by vm.rateFindQuery.collectAsStateWithLifecycle()
     val clipboard = LocalClipboardManager.current
     val selectedEvidence = remember { mutableStateMapOf<Long, Boolean>() }
+    var trafcoRateText by rememberSaveable { mutableStateOf("") }
+    var trafcoUnit by rememberSaveable { mutableStateOf("") }
+    var trafcoCurrency by rememberSaveable { mutableStateOf("EGP") }
+    var selectionRationale by rememberSaveable { mutableStateOf("") }
+    var negotiationNotes by rememberSaveable { mutableStateOf("") }
     val allRows by vm.rateFindResults.collectAsStateWithLifecycle()
 
     var targetText by rememberSaveable { mutableStateOf("") }
@@ -561,6 +566,14 @@ fun FindRatesScreen(
                     style = MaterialTheme.typography.titleSmall, color = ProcurementColors.TextPrimary)
                 Text("Evidence leads only. Not a Trafco approved rate or a verified comparison.",
                     style = MaterialTheme.typography.labelSmall, color = ProcurementColors.TextSecondary)
+                Spacer(Modifier.height(8.dp))
+                RateField("Proposed Trafco rate (draft)", trafcoRateText, onValueChange = { trafcoRateText = it })
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RateField("Trafco unit", trafcoUnit, onValueChange = { trafcoUnit = it }, modifier = Modifier.weight(1f))
+                    RateField("Currency", trafcoCurrency, onValueChange = { trafcoCurrency = it }, modifier = Modifier.weight(1f))
+                }
+                RateField("Selection rationale / specification checks", selectionRationale, onValueChange = { selectionRationale = it })
+                RateField("Negotiation points / exclusions", negotiationNotes, onValueChange = { negotiationNotes = it })
                 TextButton(onClick = {
                     val note = buildString {
                         appendLine("BOQ PRICE RESEARCH · DRAFT / NOT APPROVED")
@@ -577,9 +590,9 @@ fun FindRatesScreen(
                             appendLine("Source URI: ${row.sourceUri ?: "Unknown"}")
                         }
                         appendLine()
-                        appendLine("Trafco proposed rate: NOT SET")
-                        appendLine("Selection rationale: NOT VERIFIED")
-                        appendLine("Negotiation points: NOT RECORDED")
+                        appendLine("Trafco proposed rate: ${trafcoRateText.ifBlank { "NOT SET" }} ${trafcoCurrency.ifBlank { "CURRENCY UNKNOWN" }} / ${trafcoUnit.ifBlank { "UNIT UNKNOWN" }}")
+                        appendLine("Selection rationale: ${selectionRationale.ifBlank { "NOT VERIFIED" }}")
+                        appendLine("Negotiation points: ${negotiationNotes.ifBlank { "NOT RECORDED" }}")
                     }
                     clipboard.setText(AnnotatedString(note))
                 }) { Text("COPY AUDITABLE RESEARCH NOTE") }
