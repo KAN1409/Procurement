@@ -426,7 +426,7 @@ fun FindRatesScreen(
     val selectedEvidence = remember { mutableStateMapOf<Long, Boolean>() }
     var travcoRateText by rememberSaveable { mutableStateOf("") }
     var travcoUnit by rememberSaveable { mutableStateOf("") }
-    var travcoCurrency by rememberSaveable { mutableStateOf("EGP") }
+    var travcoCurrency by rememberSaveable { mutableStateOf("") }
     var selectionRationale by rememberSaveable { mutableStateOf("") }
     var negotiationNotes by rememberSaveable { mutableStateOf("") }
     val allRows by vm.rateFindResults.collectAsStateWithLifecycle()
@@ -566,7 +566,7 @@ fun FindRatesScreen(
             }
         }
 
-        if (selectedEvidence.values.any { it } || (boqProject.isNotBlank() && boqItemId.isNotBlank())) {
+        if (true) {
             val selectedRows = allRows.filter { selectedEvidence[it.id] == true }
             Panel {
                 Text("BOQ RESEARCH SHORTLIST · ${selectedRows.size} historical records",
@@ -608,7 +608,7 @@ fun FindRatesScreen(
                     }
                 val hasBoqIdentity = boqProject.isNotBlank() && boqItemId.isNotBlank()
                 TextButton(
-                    enabled = hasBoqIdentity && travcoRateText.isNotBlank(),
+                    enabled = hasBoqIdentity && travcoRateText.toDoubleOrNull()?.let { it.isFinite() && it > 0 } == true && travcoCurrency.isNotBlank() && travcoUnit.isNotBlank(),
                     onClick = {
                         fun csvCell(value: String): String = "\"" + value.replace("\"", "\"\"") + "\""
                         val columns = listOf(
