@@ -32,11 +32,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
@@ -412,6 +415,8 @@ fun FindRatesScreen(
     onCompare: () -> Unit
 ) {
     val query by vm.rateFindQuery.collectAsStateWithLifecycle()
+    val clipboard = LocalClipboardManager.current
+    val selectedEvidence = remember { mutableStateMapOf<Long, Boolean>() }
     val allRows by vm.rateFindResults.collectAsStateWithLifecycle()
 
     var targetText by rememberSaveable { mutableStateOf("") }
@@ -549,6 +554,38 @@ fun FindRatesScreen(
             }
         }
 
+        if (selectedEvidence.values.any { it }) {
+            val selectedRows = allRows.filter { selectedEvidence[it.id] == true }
+            Panel {
+                Text("BOQ RESEARCH SHORTLIST · ${selectedRows.size} historical records",
+                    style = MaterialTheme.typography.titleSmall, color = ProcurementColors.TextPrimary)
+                Text("Evidence leads only. Not a Trafco approved rate or a verified comparison.",
+                    style = MaterialTheme.typography.labelSmall, color = ProcurementColors.TextSecondary)
+                TextButton(onClick = {
+                    val note = buildString {
+                        appendLine("BOQ PRICE RESEARCH · DRAFT / NOT APPROVED")
+                        appendLine("BOQ search: ${query.ifBlank { "Not entered" }}")
+                        appendLine("Check item, material, specification, dimensions, unit, scope, currency and source before pricing.")
+                        selectedRows.forEach { row ->
+                            appendLine()
+                            appendLine("Historical record #${row.id}: ${row.itemRaw}")
+                            appendLine("Rate: ${row.rate} ${row.currency} / ${row.unit} · ${row.scope} · ${row.status}")
+                            appendLine("Material: ${row.material ?: "Unknown"} · Spec: ${row.specification ?: "Unknown"} · Dimensions: ${row.dimensions ?: "Unknown"}")
+                            appendLine("Contractor: ${row.contractorName ?: "Unknown"} · Project: ${row.projectName ?: "Unknown"}")
+                            appendLine("Recorded date: ${formatRateDate(row.observedDate)}")
+                            appendLine("Source: ${row.sourceFileName ?: "NOT LINKED"} · ${row.evidenceLocator ?: "Locator unknown"}")
+                            appendLine("Source URI: ${row.sourceUri ?: "Unknown"}")
+                        }
+                        appendLine()
+                        appendLine("Trafco proposed rate: NOT SET")
+                        appendLine("Selection rationale: NOT VERIFIED")
+                        appendLine("Negotiation points: NOT RECORDED")
+                    }
+                    clipboard.setText(AnnotatedString(note))
+                }) { Text("COPY AUDITABLE RESEARCH NOTE") }
+                TextButton(onClick = { selectedEvidence.clear() }) { Text("CLEAR SHORTLIST") }
+            }
+        }
         if (results.isEmpty()) {
             EmptyState(
                 when {
@@ -571,6 +608,9 @@ fun FindRatesScreen(
                         rate = rate,
                         targetRate = target?.takeIf { !targetInvalid }
                     )
+                    TextButton(onClick = { selectedEvidence[rate.id] = selectedEvidence[rate.id] != true }) {
+                        Text(if (selectedEvidence[rate.id] == true) "REMOVE FROM BOQ RESEARCH" else "ADD TO BOQ RESEARCH")
+                    }
                     HorizontalDivider(
                         color = ProcurementColors.Graphite700,
                         thickness = 1.dp
