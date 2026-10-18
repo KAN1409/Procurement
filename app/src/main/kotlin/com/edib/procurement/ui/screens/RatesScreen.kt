@@ -566,7 +566,7 @@ fun FindRatesScreen(
             }
         }
 
-        if (selectedEvidence.values.any { it }) {
+        if (selectedEvidence.values.any { it } || (boqProject.isNotBlank() && boqItemId.isNotBlank())) {
             val selectedRows = allRows.filter { selectedEvidence[it.id] == true }
             Panel {
                 Text("BOQ RESEARCH SHORTLIST · ${selectedRows.size} historical records",
@@ -606,12 +606,36 @@ fun FindRatesScreen(
                         appendLine("Selection rationale: ${selectionRationale.ifBlank { "NOT VERIFIED" }}")
                         appendLine("Negotiation points: ${negotiationNotes.ifBlank { "NOT RECORDED" }}")
                     }
+                val hasBoqIdentity = boqProject.isNotBlank() && boqItemId.isNotBlank()
+                TextButton(
+                    enabled = hasBoqIdentity && travcoRateText.isNotBlank(),
+                    onClick = {
+                        fun csvCell(value: String): String = "\"" + value.replace("\"", "\"\"") + "\""
+                        val columns = listOf(
+                            "Project", "BOQ Item ID", "BOQ Search", "Travco Rate",
+                            "Currency", "Unit", "Status", "Rationale", "Negotiation",
+                            "Historical Rate IDs", "Evidence Source Files"
+                        )
+                        val cells = listOf(
+                            boqProject.trim(), boqItemId.trim(), query, travcoRateText,
+                            travcoCurrency, travcoUnit, "DRAFT_NOT_APPROVED",
+                            selectionRationale, negotiationNotes,
+                            selectedRows.joinToString(";") { it.id.toString() },
+                            selectedRows.joinToString(";") { it.sourceFileName ?: "SOURCE UNKNOWN" }
+                        )
+                        clipboard.setText(AnnotatedString(
+                            columns.joinToString(",") { csvCell(it) } + "\\n" +
+                                cells.joinToString(",") { csvCell(it) }
+                        ))
+                        savedDraftNotice = "Copied one BOQ draft CSV row; paste into spreadsheet and verify before use"
+                    }
+                ) { Text("COPY BOQ ROW AS CSV") }
                 TextButton(onClick = { clipboard.setText(AnnotatedString(note)) }) {
                     Text("COPY AUDITABLE RESEARCH NOTE")
                 }
                 val draftKey = listOf(boqProject.trim(), boqItemId.trim())
                     .joinToString("::") { it.lowercase(java.util.Locale.ROOT) }
-                val hasBoqIdentity = boqProject.isNotBlank() && boqItemId.isNotBlank()
+
                 TextButton(
                     enabled = hasBoqIdentity,
                     onClick = {
