@@ -630,6 +630,39 @@ fun FindRatesScreen(
                         savedDraftNotice = "Copied one BOQ draft CSV row; paste into spreadsheet and verify before use"
                     }
                 ) { Text("COPY BOQ ROW AS CSV") }
+                TextButton(onClick = {
+                    fun cell(value: String): String = "\"" + value.replace("\"", "\"\"") + "\""
+                    val headers = listOf("Project", "BOQ Item ID", "BOQ Search",
+                        "Travco Rate", "Currency", "Unit", "Status", "Rationale",
+                        "Negotiation", "Historical Rate IDs", "Last Updated")
+                    val rows = draftStore.all.entries
+                        .filter { it.key.startsWith("boq::") && it.value is String }
+                        .mapNotNull { entry ->
+                            runCatching { org.json.JSONObject(entry.value as String) }.getOrNull()
+                        }
+                        .sortedWith(compareBy({ it.optString("project") }, { it.optString("boqItemId") }))
+                        .map { draft ->
+                            val ids = draft.optJSONArray("evidenceIds")
+                            val evidence = if (ids == null) "" else (0 until ids.length())
+                                .joinToString(";") { ids.optLong(it).toString() }
+                            listOf(draft.optString("project"), draft.optString("boqItemId"),
+                                draft.optString("boqSearch"), draft.optString("travcoRate"),
+                                draft.optString("travcoCurrency"), draft.optString("travcoUnit"),
+                                "DRAFT_NOT_APPROVED", draft.optString("rationale"),
+                                draft.optString("negotiation"), evidence,
+                                draft.optLong("updatedAtEpochMillis").toString())
+                        }
+                    if (rows.isEmpty()) {
+                        savedDraftNotice = "No saved BOQ drafts to export"
+                    } else {
+                        clipboard.setText(AnnotatedString(
+                            (listOf(headers) + rows).joinToString("\n") { row ->
+                                row.joinToString(",") { cell(it) }
+                            }
+                        ))
+                        savedDraftNotice = "Copied ${rows.size} local BOQ drafts as CSV; verify before spreadsheet use"
+                    }
+                }) { Text("COPY ALL SAVED BOQ DRAFTS AS CSV") }
                 TextButton(onClick = { clipboard.setText(AnnotatedString(note)) }) {
                     Text("COPY AUDITABLE RESEARCH NOTE")
                 }
