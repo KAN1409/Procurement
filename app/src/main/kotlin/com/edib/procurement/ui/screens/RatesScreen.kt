@@ -417,9 +417,9 @@ fun FindRatesScreen(
     val query by vm.rateFindQuery.collectAsStateWithLifecycle()
     val clipboard = LocalClipboardManager.current
     val selectedEvidence = remember { mutableStateMapOf<Long, Boolean>() }
-    var trafcoRateText by rememberSaveable { mutableStateOf("") }
-    var trafcoUnit by rememberSaveable { mutableStateOf("") }
-    var trafcoCurrency by rememberSaveable { mutableStateOf("EGP") }
+    var travcoRateText by rememberSaveable { mutableStateOf("") }
+    var travcoUnit by rememberSaveable { mutableStateOf("") }
+    var travcoCurrency by rememberSaveable { mutableStateOf("EGP") }
     var selectionRationale by rememberSaveable { mutableStateOf("") }
     var negotiationNotes by rememberSaveable { mutableStateOf("") }
     val allRows by vm.rateFindResults.collectAsStateWithLifecycle()
@@ -455,7 +455,7 @@ fun FindRatesScreen(
             .fillMaxSize()
             .background(ProcurementColors.Graphite900)
     ) {
-        ScreenHeader("BOQ Price Research", "new BOQ item → historical evidence → reviewed Trafco rate")
+        ScreenHeader("BOQ Price Research", "new BOQ item → historical evidence → reviewed Travco rate")
         Column(
             Modifier
                 .fillMaxWidth()
@@ -463,13 +463,13 @@ fun FindRatesScreen(
         ) {
             Panel {
                 Text(
-                    "1 · Paste a new BOQ item below. 2 · Inspect historical rates and open the original PO. 3 · Verify specification, unit, scope, date and contractor. 4 · Compare a proposed Trafco rate.",
+                    "1 · Paste a new BOQ item below. 2 · Inspect historical rates and open the original PO. 3 · Verify specification, unit, scope, date and contractor. 4 · Compare a proposed Travco rate.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = ProcurementColors.TextPrimary
                 )
                 Spacer(Modifier.height(3.dp))
                 Text(
-                    "Search results are leads, not approved Trafco prices. OBSERVED is not AWARDED; never use a different unit, scope or currency as a direct comparison. Unknown source details must be checked in the original document.",
+                    "Search results are leads, not approved Travco prices. OBSERVED is not AWARDED; never use a different unit, scope or currency as a direct comparison. Unknown source details must be checked in the original document.",
                     style = MaterialTheme.typography.labelSmall,
                     color = ProcurementColors.TextTertiary
                 )
@@ -564,13 +564,13 @@ fun FindRatesScreen(
             Panel {
                 Text("BOQ RESEARCH SHORTLIST · ${selectedRows.size} historical records",
                     style = MaterialTheme.typography.titleSmall, color = ProcurementColors.TextPrimary)
-                Text("Evidence leads only. Not a Trafco approved rate or a verified comparison.",
+                Text("Evidence leads only. Not a Travco approved rate or a verified comparison.",
                     style = MaterialTheme.typography.labelSmall, color = ProcurementColors.TextSecondary)
                 Spacer(Modifier.height(8.dp))
-                RateField("Proposed Trafco rate (draft)", trafcoRateText, onValueChange = { trafcoRateText = it })
+                RateField("Proposed Travco rate (draft)", travcoRateText, onValueChange = { travcoRateText = it })
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RateField("Trafco unit", trafcoUnit, onValueChange = { trafcoUnit = it }, modifier = Modifier.weight(1f))
-                    RateField("Currency", trafcoCurrency, onValueChange = { trafcoCurrency = it }, modifier = Modifier.weight(1f))
+                    RateField("Travco unit", travcoUnit, onValueChange = { travcoUnit = it }, modifier = Modifier.weight(1f))
+                    RateField("Currency", travcoCurrency, onValueChange = { travcoCurrency = it }, modifier = Modifier.weight(1f))
                 }
                 RateField("Selection rationale / specification checks", selectionRationale, onValueChange = { selectionRationale = it })
                 RateField("Negotiation points / exclusions", negotiationNotes, onValueChange = { negotiationNotes = it })
@@ -590,7 +590,7 @@ fun FindRatesScreen(
                             appendLine("Source URI: ${row.sourceUri ?: "Unknown"}")
                         }
                         appendLine()
-                        appendLine("Trafco proposed rate: ${trafcoRateText.ifBlank { "NOT SET" }} ${trafcoCurrency.ifBlank { "CURRENCY UNKNOWN" }} / ${trafcoUnit.ifBlank { "UNIT UNKNOWN" }}")
+                        appendLine("Travco proposed rate: ${travcoRateText.ifBlank { "NOT SET" }} ${travcoCurrency.ifBlank { "CURRENCY UNKNOWN" }} / ${travcoUnit.ifBlank { "UNIT UNKNOWN" }}")
                         appendLine("Selection rationale: ${selectionRationale.ifBlank { "NOT VERIFIED" }}")
                         appendLine("Negotiation points: ${negotiationNotes.ifBlank { "NOT RECORDED" }}")
                     }
