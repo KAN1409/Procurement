@@ -445,7 +445,7 @@ fun FindRatesScreen(
             .fillMaxSize()
             .background(ProcurementColors.Graphite900)
     ) {
-        ScreenHeader("Find Rates", "broad commercial memory · unit is optional")
+        ScreenHeader("BOQ Price Research", "new BOQ item → historical evidence → reviewed Trafco rate")
         Column(
             Modifier
                 .fillMaxWidth()
@@ -453,13 +453,19 @@ fun FindRatesScreen(
         ) {
             Panel {
                 Text(
-                    "Search first. Unit is a result, not a requirement.",
+                    "1 · Paste a new BOQ item below. 2 · Inspect historical rates and open the original PO. 3 · Verify specification, unit, scope, date and contractor. 4 · Compare a proposed Trafco rate.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = ProcurementColors.TextPrimary
                 )
                 Spacer(Modifier.height(3.dp))
                 Text(
-                    "Add an optional target price to rank related rates by price proximity. Different units stay visible and are never converted.",
+                    "Search results are leads, not approved Trafco prices. OBSERVED is not AWARDED; never use a different unit, scope or currency as a direct comparison. Unknown source details must be checked in the original document.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ProcurementColors.TextTertiary
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    "Optional target price ranks related observations by proximity only. It does not validate equivalence or convert units.",
                     style = MaterialTheme.typography.labelSmall,
                     color = ProcurementColors.TextTertiary
                 )
@@ -468,7 +474,7 @@ fun FindRatesScreen(
             SearchField(
                 value = query,
                 onValueChange = vm::setRateFindQuery,
-                placeholder = "e.g. رخام, وزرة, عبد المقصود, Galala…",
+                placeholder = "Paste BOQ item / search material, project or contractor…",
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(7.dp))
@@ -537,7 +543,7 @@ fun FindRatesScreen(
                             onCompare()
                         }
                     ) {
-                        Text("COMPARE A PRICE", color = ProcurementColors.AccentRedBright)
+                        Text("CHECK TRAFCO RATE", color = ProcurementColors.AccentRedBright)
                     }
                 }
             }
