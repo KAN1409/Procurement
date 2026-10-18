@@ -624,7 +624,7 @@ fun FindRatesScreen(
                             selectedRows.joinToString(";") { it.sourceFileName ?: "SOURCE UNKNOWN" }
                         )
                         clipboard.setText(AnnotatedString(
-                            columns.joinToString(",") { csvCell(it) } + "\\n" +
+                            columns.joinToString(",") { csvCell(it) } + "\n" +
                                 cells.joinToString(",") { csvCell(it) }
                         ))
                         savedDraftNotice = "Copied one BOQ draft CSV row; paste into spreadsheet and verify before use"
