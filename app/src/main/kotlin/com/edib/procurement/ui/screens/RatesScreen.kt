@@ -423,6 +423,7 @@ fun FindRatesScreen(
     var boqProject by rememberSaveable { mutableStateOf("") }
     var boqItemId by rememberSaveable { mutableStateOf("") }
     var savedDraftNotice by rememberSaveable { mutableStateOf("") }
+    var showDraftEditor by rememberSaveable { mutableStateOf(false) }
     val selectedEvidence = remember { mutableStateMapOf<Long, Boolean>() }
     var travcoRateText by rememberSaveable { mutableStateOf("") }
     var travcoUnit by rememberSaveable { mutableStateOf("") }
@@ -560,14 +561,21 @@ fun FindRatesScreen(
                             onCompare()
                         }
                     ) {
-                        Text("CHECK TRAFCO RATE", color = ProcurementColors.AccentRedBright)
+                        Text("CHECK TRAVCO RATE", color = ProcurementColors.AccentRedBright)
                     }
                 }
             }
         }
 
-        if (true) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            TextButton(onClick = { showDraftEditor = !showDraftEditor }) {
+                Text(if (showDraftEditor) "HIDE BOQ DRAFT EDITOR" else "OPEN BOQ DRAFT EDITOR")
+            }
+            Text("${selectedEvidence.count { it.value }} selected evidence IDs", color = ProcurementColors.TextSecondary)
+        }
+        if (showDraftEditor) {
             val selectedRows = allRows.filter { selectedEvidence[it.id] == true }
+            Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())) {
             Panel {
                 Text("BOQ RESEARCH SHORTLIST · ${selectedRows.size} historical records",
                     style = MaterialTheme.typography.titleSmall, color = ProcurementColors.TextPrimary)
@@ -606,6 +614,8 @@ fun FindRatesScreen(
                         appendLine("Selection rationale: ${selectionRationale.ifBlank { "NOT VERIFIED" }}")
                         appendLine("Negotiation points: ${negotiationNotes.ifBlank { "NOT RECORDED" }}")
                     }
+                val missingEvidenceIds = selectedEvidence.filterValues { it }.keys - selectedRows.map { it.id }.toSet()
+                if (missingEvidenceIds.isNotEmpty()) Text("Evidence IDs not loaded in current search: ${missingEvidenceIds.sorted().joinToString(", ")}. Verify sources before use.", color = ProcurementColors.StatusWarn)
                 val hasBoqIdentity = boqProject.isNotBlank() && boqItemId.isNotBlank()
                 TextButton(
                     enabled = hasBoqIdentity && travcoRateText.toDoubleOrNull()?.let { it.isFinite() && it > 0 } == true && travcoCurrency.isNotBlank() && travcoUnit.isNotBlank(),
@@ -620,7 +630,7 @@ fun FindRatesScreen(
                             boqProject.trim(), boqItemId.trim(), query, travcoRateText,
                             travcoCurrency, travcoUnit, "DRAFT_NOT_APPROVED",
                             selectionRationale, negotiationNotes,
-                            selectedRows.joinToString(";") { it.id.toString() },
+                            selectedEvidence.filterValues { it }.keys.sorted().joinToString(";"),
                             selectedRows.joinToString(";") { it.sourceFileName ?: "SOURCE UNKNOWN" }
                         )
                         clipboard.setText(AnnotatedString(
@@ -683,7 +693,7 @@ fun FindRatesScreen(
                             put("rationale", selectionRationale)
                             put("negotiation", negotiationNotes)
                             put("evidenceIds", org.json.JSONArray().apply {
-                                selectedRows.forEach { put(it.id) }
+                                selectedEvidence.filterValues { it }.keys.sorted().forEach { put(it) }
                             })
                             put("auditNote", note)
                             put("updatedAtEpochMillis", System.currentTimeMillis())
@@ -729,6 +739,7 @@ fun FindRatesScreen(
                         color = ProcurementColors.TextSecondary)
                 }
                 TextButton(onClick = { selectedEvidence.clear() }) { Text("CLEAR SHORTLIST") }
+            }
             }
         }
         if (results.isEmpty()) {
