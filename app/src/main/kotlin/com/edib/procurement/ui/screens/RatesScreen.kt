@@ -420,6 +420,9 @@ fun FindRatesScreen(
     val context = LocalContext.current
     val draftStore = remember(context) { context.getSharedPreferences("travco_boq_research_drafts_v1", android.content.Context.MODE_PRIVATE) }
     var savedDraftPreview by rememberSaveable { mutableStateOf("") }
+    var boqProject by rememberSaveable { mutableStateOf("") }
+    var boqItemId by rememberSaveable { mutableStateOf("") }
+    var savedDraftNotice by rememberSaveable { mutableStateOf("") }
     val selectedEvidence = remember { mutableStateMapOf<Long, Boolean>() }
     var travcoRateText by rememberSaveable { mutableStateOf("") }
     var travcoUnit by rememberSaveable { mutableStateOf("") }
@@ -571,6 +574,10 @@ fun FindRatesScreen(
                 Text("Evidence leads only. Not a Travco approved rate or a verified comparison.",
                     style = MaterialTheme.typography.labelSmall, color = ProcurementColors.TextSecondary)
                 Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RateField("BOQ project *", boqProject, onValueChange = { boqProject = it }, modifier = Modifier.weight(1f))
+                    RateField("BOQ item ID *", boqItemId, onValueChange = { boqItemId = it }, modifier = Modifier.weight(1f))
+                }
                 RateField("Proposed Travco rate (draft)", travcoRateText, onValueChange = { travcoRateText = it })
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     RateField("Travco unit", travcoUnit, onValueChange = { travcoUnit = it }, modifier = Modifier.weight(1f))
@@ -580,6 +587,8 @@ fun FindRatesScreen(
                 RateField("Negotiation points / exclusions", negotiationNotes, onValueChange = { negotiationNotes = it })
                 val note = buildString {
                         appendLine("BOQ PRICE RESEARCH · DRAFT / NOT APPROVED")
+                        appendLine("BOQ project: ${boqProject.ifBlank { "NOT SET" }}")
+                        appendLine("BOQ item ID: ${boqItemId.ifBlank { "NOT SET" }}")
                         appendLine("BOQ search: ${query.ifBlank { "Not entered" }}")
                         appendLine("Check item, material, specification, dimensions, unit, scope, currency and source before pricing.")
                         selectedRows.forEach { row ->
@@ -600,21 +609,61 @@ fun FindRatesScreen(
                 TextButton(onClick = { clipboard.setText(AnnotatedString(note)) }) {
                     Text("COPY AUDITABLE RESEARCH NOTE")
                 }
+                val draftKey = listOf(boqProject.trim(), boqItemId.trim())
+                    .joinToString("::") { it.lowercase(java.util.Locale.ROOT) }
+                val hasBoqIdentity = boqProject.isNotBlank() && boqItemId.isNotBlank()
                 TextButton(
-                    enabled = query.isNotBlank(),
+                    enabled = hasBoqIdentity,
                     onClick = {
-                        val key = query.trim().lowercase(java.util.Locale.ROOT)
-                        if (draftStore.edit().putString(key, note).commit()) savedDraftPreview = note
+                        val record = org.json.JSONObject().apply {
+                            put("schemaVersion", 1)
+                            put("project", boqProject.trim())
+                            put("boqItemId", boqItemId.trim())
+                            put("boqSearch", query)
+                            put("travcoRate", travcoRateText)
+                            put("travcoUnit", travcoUnit)
+                            put("travcoCurrency", travcoCurrency)
+                            put("rationale", selectionRationale)
+                            put("negotiation", negotiationNotes)
+                            put("evidenceIds", org.json.JSONArray().apply {
+                                selectedRows.forEach { put(it.id) }
+                            })
+                            put("auditNote", note)
+                            put("updatedAtEpochMillis", System.currentTimeMillis())
+                            put("status", "DRAFT_NOT_APPROVED")
+                        }
+                        if (draftStore.edit().putString("boq::$draftKey", record.toString()).commit()) {
+                            savedDraftPreview = note
+                            savedDraftNotice = "Saved for BOQ item · local draft"
+                        } else savedDraftNotice = "Save failed; draft not stored"
                     }
-                ) { Text("SAVE LOCAL BOQ RESEARCH DRAFT") }
+                ) { Text("SAVE BOQ ITEM DRAFT") }
                 TextButton(
-                    enabled = query.isNotBlank(),
+                    enabled = hasBoqIdentity,
                     onClick = {
-                        savedDraftPreview = draftStore.getString(
-                            query.trim().lowercase(java.util.Locale.ROOT), ""
-                        ).orEmpty()
+                        val raw = draftStore.getString("boq::$draftKey", null)
+                        val record = runCatching { raw?.let { org.json.JSONObject(it) } }.getOrNull()
+                        if (record == null) {
+                            savedDraftNotice = "No saved draft for this project + item ID"
+                            savedDraftPreview = ""
+                        } else {
+                            travcoRateText = record.optString("travcoRate")
+                            travcoUnit = record.optString("travcoUnit")
+                            travcoCurrency = record.optString("travcoCurrency")
+                            selectionRationale = record.optString("rationale")
+                            negotiationNotes = record.optString("negotiation")
+                            savedDraftPreview = record.optString("auditNote")
+                            selectedEvidence.clear()
+                            val ids = record.optJSONArray("evidenceIds")
+                            if (ids != null) for (i in 0 until ids.length()) {
+                                selectedEvidence[ids.optLong(i)] = true
+                            }
+                            savedDraftNotice = "Draft restored; verify evidence and current BOQ before use"
+                        }
                     }
-                ) { Text("VIEW SAVED DRAFT FOR THIS BOQ SEARCH") }
+                ) { Text("LOAD / EDIT BOQ ITEM DRAFT") }
+                if (savedDraftNotice.isNotBlank()) Text(savedDraftNotice,
+                    style = MaterialTheme.typography.labelSmall, color = ProcurementColors.TextSecondary)
                 if (savedDraftPreview.isNotBlank()) {
                     Text("SAVED LOCAL SNAPSHOT · DRAFT ONLY · NOT APPROVED",
                         style = MaterialTheme.typography.labelSmall,
